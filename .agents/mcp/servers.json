@@ -1,0 +1,30 @@
+{
+  "vutoolkit": {
+    "command": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "src/toolfactory/mcp.ts"
+    ]
+  },
+  "toolfactory": {
+    "command": "npx",
+    "args": [
+      "toolfactory",
+      "mcp"
+    ]
+  },
+  "shadcn": {
+    "command": "npx",
+    "args": [
+      "shadcn@latest",
+      "mcp"
+    ]
+  },
+  "playwright": {
+    "command": "npx",
+    "args": [
+      "@playwright/mcp@latest"
+    ]
+  }
+}

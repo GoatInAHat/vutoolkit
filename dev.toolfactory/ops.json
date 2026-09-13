@@ -1,0 +1,587 @@
+{
+  "tools": [
+    {
+      "name": "gpa.verify",
+      "description": "The golden anchor: recompute per-term GPAs from posted marks and compare against the numbers Vanderbilt posted. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to lock the real YES mapping.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "transcript": {
+            "type": "object",
+            "properties": {
+              "terms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "term": {
+                      "type": "string"
+                    },
+                    "postedGpa": {
+                      "type": "number"
+                    },
+                    "courses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "course": {
+                            "type": "string"
+                          },
+                          "credits": {
+                            "type": "number"
+                          },
+                          "grade": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "course",
+                          "credits"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "term",
+                    "courses"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "terms"
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string"
+                },
+                "posted": {
+                  "type": "number"
+                },
+                "recomputed": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "match": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "term",
+                "posted",
+                "recomputed",
+                "match"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cumulative": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "rows",
+          "cumulative",
+          "note"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "grades.whatif",
+      "description": "Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "transcript": {
+            "type": "object",
+            "properties": {
+              "terms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "term": {
+                      "type": "string"
+                    },
+                    "postedGpa": {
+                      "type": "number"
+                    },
+                    "courses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "course": {
+                            "type": "string"
+                          },
+                          "credits": {
+                            "type": "number"
+                          },
+                          "grade": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "course",
+                          "credits"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "term",
+                    "courses"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "terms"
+            ]
+          },
+          "hypotheticals": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "course": {
+                  "type": "string"
+                },
+                "grade": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "course",
+                "grade"
+              ]
+            }
+          }
+        },
+        "required": [
+          "transcript"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "terms": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": {
+                  "type": "string"
+                },
+                "gpa": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "gpaCredits": {
+                  "type": "number"
+                },
+                "qualityPoints": {
+                  "type": "number"
+                },
+                "changed": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "term",
+                "gpa",
+                "gpaCredits",
+                "qualityPoints",
+                "changed"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cumulative": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "cumulativeGpaCredits": {
+            "type": "number"
+          },
+          "cumulativeQualityPoints": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "terms",
+          "cumulative",
+          "cumulativeGpaCredits",
+          "cumulativeQualityPoints"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "record.fetch",
+      "description": "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode gated on credentials.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fixturePath": {
+            "description": "Read the transcript from this JSON file instead of live YES (dev/test)",
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "transcript": {
+            "type": "object",
+            "properties": {
+              "terms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "term": {
+                      "type": "string"
+                    },
+                    "postedGpa": {
+                      "type": "number"
+                    },
+                    "courses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "course": {
+                            "type": "string"
+                          },
+                          "credits": {
+                            "type": "number"
+                          },
+                          "grade": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "course",
+                          "credits"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "term",
+                    "courses"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "terms"
+            ],
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "fixture",
+              "live"
+            ]
+          }
+        },
+        "required": [
+          "transcript",
+          "source"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "sessions.forget",
+      "description": "Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          }
+        },
+        "required": [
+          "idp"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "sessions.list",
+      "description": "Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "idp": {
+                  "type": "string"
+                },
+                "acquiredAt": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string"
+                },
+                "healthy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "idp",
+                "acquiredAt",
+                "healthy"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "sessions.open",
+      "description": "Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          },
+          "format": {
+            "default": "cookie-header",
+            "type": "string",
+            "enum": [
+              "cookie-header",
+              "cdp",
+              "storage-state"
+            ]
+          }
+        },
+        "required": [
+          "idp"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "payload": {}
+        },
+        "required": [
+          "payload"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "sessions.refresh",
+      "description": "Run the OneVU passkey ceremony (CDP virtual authenticator holding the vaulted credential) and re-vault the fresh session. Credential material arrives via SecretRef — extracted or born-virtual, same contract.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "idp": {
+            "default": "vanderbilt",
+            "type": "string",
+            "enum": [
+              "vanderbilt"
+            ]
+          },
+          "startUrl": {
+            "default": "https://onevu.vanderbilt.edu",
+            "type": "string",
+            "format": "uri"
+          },
+          "secretRef": {
+            "description": "SecretRef holding PasskeyMaterialV1 JSON",
+            "type": "string"
+          },
+          "headless": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "acquiredAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "acquiredAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "browser",
+            "net"
+          ]
+        }
+      }
+    },
+    {
+      "name": "web",
+      "description": "Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "openWorldHint": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "shell",
+            "net"
+          ]
+        }
+      }
+    }
+  ]
+}

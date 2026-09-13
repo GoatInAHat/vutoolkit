@@ -1,0 +1,51 @@
+{
+  "name": "vutoolkit",
+  "version": "0.1.0",
+  "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoatInAHat/vutoolkit.git"
+  },
+  "keywords": [
+    "vanderbilt",
+    "yes",
+    "sso",
+    "passkey",
+    "gpa",
+    "degree-planner"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "test:live": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/live.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "commander": "^15.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "toolfactory": "^0.2.1",
+    "tsx": "^4.0.0",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  },
+  "bin": {
+    "vutoolkit": "./dist/toolfactory/cli.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "schemas",
+    "web/dist",
+    "README.md",
+    "LICENSE"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "vutoolkit",
+  "name": "Vutoolkit",
+  "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "gpa.verify",
+      "grades.whatif",
+      "record.fetch",
+      "sessions.forget",
+      "sessions.list",
+      "sessions.open",
+      "web"
+    ]
+  }
+}

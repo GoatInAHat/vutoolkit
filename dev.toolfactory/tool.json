@@ -1,0 +1,21 @@
+{
+  "$schema": "./tool.schema.json",
+  "schemaVersion": 1,
+  "identity": "plugin.json",
+  "binding": "typescript",
+  "surfaces": [
+    "skill",
+    "mcp",
+    "cli",
+    "npm",
+    "openclaw-native",
+    "web",
+    "browser-extension"
+  ],
+  "bundle": {
+    "runtime": "package"
+  },
+  "tests": {
+    "examples": {}
+  }
+}

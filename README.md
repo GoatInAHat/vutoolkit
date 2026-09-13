@@ -38,3 +38,25 @@ All credentials live in the OpenClaw secret vault (working names: `VANDERBILT_VU
 - [ ] What-if GPA calculator + golden test
 - [ ] Extension rewrite
 - [ ] Setup flow
+
+<!-- tf:install -->
+## Install
+
+[![Agent Skill](https://img.shields.io/badge/Agent_Skill-available-5B5BD6)](https://github.com/GoatInAHat/vutoolkit)
+
+- **Agent Skill** — `npx skills add GoatInAHat/vutoolkit`
+- **MCP server** — `npx -y vutoolkit mcp` [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=vutoolkit&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22vutoolkit%22%2C%22mcp%22%5D%7D) [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=vutoolkit&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInZ1dG9vbGtpdCIsIm1jcCJdfQ==)
+- **OpenClaw plugin** — `openclaw plugins install --link hosts/openclaw` from a checkout
+- **Browser extension** — from a checkout: `npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt build`,
+  then `chrome://extensions` → developer mode → Load unpacked → `hosts/browser/.output/chrome-mv3`
+  (Firefox: `npm --prefix hosts/browser exec --no -- web-ext run`). Each GitHub Release attaches the
+  store uploads `vutoolkit-0.1.0-chrome.zip`, `vutoolkit-0.1.0-firefox.zip`, `vutoolkit-0.1.0-edge.zip`. When Firefox signing credentials are configured, it also attaches a
+  Mozilla-signed `.xpi`; the Chrome Web Store, Firefox Add-ons and Edge Add-ons listings appear once the release's
+  submit step has each store's credentials. Then pair it: `npx -y vutoolkit mcp --http --pair`
+  prints the `<url>#<token>` the extension's options page accepts.
+- **Web app** — `npx -y vutoolkit mcp --http --open` serves the operations page beside the
+  MCP endpoint on one port and opens it; over MCP or a skill, the `web` operation does the same and
+  returns the URL.
+- **npm package** — `npm install vutoolkit`
+
+<!-- /tf:install -->
