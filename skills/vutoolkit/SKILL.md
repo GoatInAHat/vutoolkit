@@ -38,11 +38,19 @@ Arguments: `fixturePath`.
 
 ### sessions.forget
 
-Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring.
+Drop a cached session: removes its row (metadata and values) from the session vault.
 
 Arguments: `idp`.
 
 `vutoolkit sessions.forget --json '<arguments>'` prints a JSON result. MCP tool `sessions.forget` on server `vutoolkit` returns the same result as `structuredContent`.
+
+### sessions.ingest
+
+Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.
+
+Arguments: `idp`, `sourcePath`.
+
+`vutoolkit sessions.ingest --json '<arguments>'` prints a JSON result. MCP tool `sessions.ingest` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### sessions.list
 
@@ -52,7 +60,7 @@ Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expi
 
 ### sessions.open
 
-Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands.
+Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.
 
 Arguments: `idp`, `format`.
 

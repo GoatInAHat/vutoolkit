@@ -56,3 +56,8 @@ web/src/ops.json
 
 # machine-local GSD state
 .gsd
+
+# session bootstrap persona templates (written to cwd by the host, not repo content)
+/IDENTITY.md
+/SOUL.md
+/USER.md

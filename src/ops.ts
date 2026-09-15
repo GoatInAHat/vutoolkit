@@ -3,16 +3,19 @@
  * Host-provided capabilities are declared with `requires`; toolfactory decides per surface
  * whether each operation is native, bridged, degraded, or excluded. Anything touching session
  * values or passkey material goes through the vault contract (src/vault/index.ts) and is
- * honestly gated until the OpenClaw-side SecretRef wiring lands.
+ * honestly gated until their wiring lands. sessions.ingest/open/list/forget are wired through
+ * the file-backed FileSessionStore; sessions.refresh stays gated until the SecretLoader binding
+ * plus browser ceremony land on the host side.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { cumulative, round3, whatIf, type Transcript } from "./gpa/engine.js";
 import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
-import { vaultNotWired, type SessionMeta } from "./vault/index.js";
-import { operation } from "./toolfactory/types.js";
+import { vaultNotWired } from "./vault/index.js";
+import { FileSessionStore, harvestToStoredSession } from "./vault/file-store.js";
+import { operation, type Context } from "./toolfactory/types.js";
 
 const transcriptSchema = z.object({
   terms: z.array(
@@ -31,16 +34,8 @@ const transcriptSchema = z.object({
 });
 type TranscriptArgs = z.infer<typeof transcriptSchema>;
 
-/** Non-secret session metadata cache; the values themselves live only in the vault. */
-const indexFile = (dataDir: string): string => join(dataDir, "session-index.json");
-function readIndex(dataDir: string): SessionMeta[] {
-  const p = indexFile(dataDir);
-  return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as SessionMeta[]) : [];
-}
-function writeIndex(dataDir: string, rows: SessionMeta[]): void {
-  mkdirSync(dataDir, { recursive: true });
-  writeFileSync(indexFile(dataDir), JSON.stringify(rows, null, 2));
-}
+/** The session vault: one 0600 JSON file in the tool's data dir, values never in tool output. */
+const vaultStore = (ctx: Context): FileSessionStore => new FileSessionStore(join(ctx.dataDir, "sessions.vault.json"));
 
 export const operations = [
   operation({
@@ -59,19 +54,37 @@ export const operations = [
       ),
     }),
     annotations: { readOnlyHint: true },
-    handler: async (_args, ctx) => ({ sessions: readIndex(ctx.dataDir) }),
+    handler: async (_args, ctx) => ({ sessions: await vaultStore(ctx).list() }),
   }),
   operation({
     name: "sessions.open",
     description:
-      "Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands.",
+      "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
     input: z.object({
       idp: z.enum(["vanderbilt", "microsoft"]),
       format: z.enum(["cookie-header", "cdp", "storage-state"]).default("cookie-header"),
     }),
     output: z.object({ payload: z.unknown() }),
     requires: ["secret"],
-    handler: async ({ idp }) => vaultNotWired(`sessions.open(${idp}) session values`),
+    handler: async ({ idp, format }, ctx) => {
+      const store = vaultStore(ctx);
+      const session = await store.get(idp);
+      if (!session) throw vaultNotWired(`sessions.open(${idp}): no stored session — run sessions.ingest first`);
+      if (format === "cookie-header") return { payload: session.cookieHeader };
+      if (format === "cdp") {
+        return {
+          payload: store.cookies(idp).map(({ name, value, domain, path, expires, httpOnly, secure, sameSite }) => ({
+            name, value, domain, path, expires, httpOnly, secure, sameSite,
+          })),
+        };
+      }
+      return {
+        payload: {
+          cookies: store.cookies(idp).map((c) => ({ ...c, expires: c.expires ?? -1 })),
+          origins: [],
+        },
+      };
+    },
   }),
   operation({
     name: "sessions.refresh",
@@ -90,15 +103,38 @@ export const operations = [
   operation({
     name: "sessions.forget",
     description:
-      "Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring.",
+      "Drop a cached session: removes its row (metadata and values) from the session vault.",
     input: z.object({ idp: z.enum(["vanderbilt", "microsoft"]) }),
     output: z.object({ removed: z.boolean() }),
     handler: async ({ idp }, ctx) => {
-      const rows = readIndex(ctx.dataDir);
-      const kept = rows.filter((r) => r.idp !== idp);
-      if (kept.length === rows.length) return { removed: false };
-      writeIndex(ctx.dataDir, kept);
-      return { removed: true };
+      const store = vaultStore(ctx);
+      const existed = (await store.get(idp)) !== null;
+      await store.forget(idp);
+      return { removed: existed };
+    },
+  }),
+  operation({
+    name: "sessions.ingest",
+    description:
+      "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
+    input: z.object({
+      idp: z.enum(["vanderbilt", "microsoft"]),
+      sourcePath: z.string().describe(
+        "Path to the harvested cookie JSON: a CDP cookie array, {cookies:[...]}, or {cookieHeader}",
+      ),
+    }),
+    output: z.object({
+      idp: z.enum(["vanderbilt", "microsoft"]),
+      ingested: z.number(),
+      acquiredAt: z.string(),
+      expiresAt: z.string().optional(),
+    }),
+    requires: ["secret", "fs"],
+    handler: async ({ idp, sourcePath }, ctx) => {
+      const raw: unknown = JSON.parse(readFileSync(sourcePath, "utf8"));
+      const session = harvestToStoredSession(idp, raw, new Date().toISOString());
+      await vaultStore(ctx).put(session);
+      return { idp, ingested: session.cookies.length, acquiredAt: session.acquiredAt, expiresAt: session.expiresAt };
     },
   }),
   operation({

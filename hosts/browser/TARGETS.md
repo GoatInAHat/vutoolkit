@@ -13,6 +13,7 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 | `grades.whatif` | native | native | native |
 | `record.fetch` | native | native | native |
 | `sessions.forget` | native | native | native |
+| `sessions.ingest` | native | native | native |
 | `sessions.list` | native | native | native |
 | `sessions.open` | native | native | native |
 | `sessions.refresh` | native | native | native |

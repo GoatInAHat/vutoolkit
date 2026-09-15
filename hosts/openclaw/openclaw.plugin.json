@@ -17,6 +17,7 @@
       "grades.whatif",
       "record.fetch",
       "sessions.forget",
+      "sessions.ingest",
       "sessions.list",
       "sessions.open",
       "web"

@@ -38,9 +38,10 @@ and changes nothing (openclaw 2026.8.2).
 - `gpa.verify` — The golden anchor: recompute per-term GPAs from posted marks and compare against the numbers Vanderbilt posted. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to lock the real YES mapping. (native)
 - `grades.whatif` — Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs. (native)
 - `record.fetch` — The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode gated on credentials. (native)
-- `sessions.forget` — Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring. (native)
+- `sessions.forget` — Drop a cached session: removes its row (metadata and values) from the session vault. (native)
+- `sessions.ingest` — Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit. (native)
 - `sessions.list` — Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault. (native)
-- `sessions.open` — Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands. (native)
+- `sessions.open` — Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else. (native)
 - `web` — Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL. (native)
 
 ## Not generated — `excluded:implement-in-hosts`

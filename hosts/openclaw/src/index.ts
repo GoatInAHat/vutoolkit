@@ -194,7 +194,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "sessions.forget",
-      description: "Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring.",
+      description: "Drop a cached session: removes its row (metadata and values) from the session vault.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
@@ -217,6 +217,35 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
+      name: "sessions.ingest",
+      description: "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "Path to the harvested cookie JSON: a CDP cookie array, {cookies:[...]}, or {cookieHeader}"
+          }
+        },
+        "required": [
+          "idp",
+          "sourcePath"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("sessions.ingest").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
       name: "sessions.list",
       description: "Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault.",
       parameters: Type.Unsafe({
@@ -231,7 +260,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "sessions.open",
-      description: "Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands.",
+      description: "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {

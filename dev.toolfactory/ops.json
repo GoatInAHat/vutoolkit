@@ -359,7 +359,7 @@
     },
     {
       "name": "sessions.forget",
-      "description": "Drop a cached session: removes the metadata row now; the vault-side value delete rides the OpenClaw wiring.",
+      "description": "Drop a cached session: removes its row (metadata and values) from the session vault.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -392,6 +392,67 @@
       "_meta": {
         "dev.toolfactory": {
           "requires": []
+        }
+      }
+    },
+    {
+      "name": "sessions.ingest",
+      "description": "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "Path to the harvested cookie JSON: a CDP cookie array, {cookies:[...]}, or {cookieHeader}"
+          }
+        },
+        "required": [
+          "idp",
+          "sourcePath"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          },
+          "ingested": {
+            "type": "number"
+          },
+          "acquiredAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idp",
+          "ingested",
+          "acquiredAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "fs"
+          ]
         }
       }
     },
@@ -450,7 +511,7 @@
     },
     {
       "name": "sessions.open",
-      "description": "Injection payload for a cached session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Gated: values resolve through the vault once the OpenClaw-side wiring lands.",
+      "description": "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
       "inputSchema": {
         "type": "object",
         "properties": {
