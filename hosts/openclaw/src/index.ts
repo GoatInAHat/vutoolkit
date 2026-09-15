@@ -176,7 +176,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "record.fetch",
-      description: "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode gated on credentials.",
+      description: "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {

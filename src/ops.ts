@@ -157,7 +157,7 @@ export const operations = [
   operation({
     name: "record.fetch",
     description:
-      "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode gated on credentials.",
+      "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
     input: z.object({
       fixturePath: z
         .string()
@@ -166,12 +166,14 @@ export const operations = [
     }),
     output: z.object({ transcript: transcriptSchema, source: z.enum(["fixture", "live"]) }),
     requires: ["net", "secret"],
-    handler: async ({ fixturePath }) => {
+    handler: async ({ fixturePath }, ctx) => {
       if (fixturePath) {
         const transcript = JSON.parse(readFileSync(fixturePath, "utf8")) as TranscriptArgs;
         return { transcript, source: "fixture" as const };
       }
-      const transcript = await new YesClient().academicRecord();
+      const store = vaultStore(ctx);
+      if (!(await store.get("vanderbilt"))) await ensureSession("vanderbilt", store);
+      const transcript = await new YesClient({ cookies: store.cookies("vanderbilt") }).academicRecord();
       return { transcript, source: "live" as const };
     },
   }),

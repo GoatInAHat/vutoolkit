@@ -30,7 +30,7 @@ Arguments: `transcript`, `hypotheticals`.
 
 ### record.fetch
 
-The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode gated on credentials.
+The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.
 
 Arguments: `fixturePath`.
 
