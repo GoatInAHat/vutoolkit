@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { cumulative, round3, whatIf, type Transcript } from "./gpa/engine.js";
+import { cumulative, matchesPostedGpa, round3, whatIf, type Transcript } from "./gpa/engine.js";
 import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
@@ -228,13 +228,11 @@ export const operations = [
       const rows: { term: string; posted: number; recomputed: number | null; match: boolean }[] = [];
       for (const term of t.terms) {
         if (term.postedGpa === undefined) continue;
-        const recomputed = round3(whatIf({ terms: [term] }, []).terms[0]?.gpa ?? null);
-        // YES displays GPAs truncated to 3 decimals (live 2025 Spring: 26.10/10.50 = 2.48571…,
-        // posted 2.485), so accept the truncated display as well as the rounded one — both are
-        // exact representations, neither is a tolerance.
-        const truncated = recomputed === null ? null : Math.floor(recomputed * 1000) / 1000;
-        const match =
-          recomputed !== null && (recomputed === term.postedGpa || truncated === term.postedGpa);
+        // Compare on the RAW gpa: truncating the rounded value would floor 2.486 -> 2.486 and
+        // never reproduce YES's 2.485 display of 2.48571...
+        const raw = whatIf({ terms: [term] }, []).terms[0]?.gpa ?? null;
+        const recomputed = round3(raw);
+        const match = matchesPostedGpa(raw, term.postedGpa);
         rows.push({ term: term.term, posted: term.postedGpa, recomputed, match });
       }
       const ok = rows.length > 0 && rows.every((r) => r.match);

@@ -3,6 +3,7 @@ import {
   DEFAULT_SCALE,
   GpaError,
   cumulative,
+  matchesPostedGpa,
   whatIf,
   type Transcript,
 } from "./engine.js";
@@ -64,5 +65,24 @@ describe("gpa engine (golden anchor)", () => {
 
   it("exposes the committed fixture through the verify helper", () => {
     expect(cumulative(FIXTURE)).toBeCloseTo(3.175, 9);
+  });
+});
+
+describe("matchesPostedGpa", () => {
+  it("accepts YES's truncated 3-decimal display (live 2026-09-15 case)", () => {
+    // 2025 Spring: 26.10 / 10.50 = 2.48571..., posted 2.485 (truncated, not rounded).
+    expect(matchesPostedGpa(26.1 / 10.5, 2.485)).toBe(true);
+  });
+
+  it("accepts the rounded display and exact equality", () => {
+    expect(matchesPostedGpa(2.4867, 2.487)).toBe(true);
+    expect(matchesPostedGpa(2.971, 2.971)).toBe(true);
+  });
+
+  it("refuses a genuinely different GPA and an empty recompute", () => {
+    expect(matchesPostedGpa(2.484, 2.485)).toBe(false);
+    // raw 2.4849 renders as 2.485 (rounded) or 2.484 (truncated) — 2.486 is neither.
+    expect(matchesPostedGpa(2.4849, 2.486)).toBe(false);
+    expect(matchesPostedGpa(null, 2.485)).toBe(false);
   });
 });

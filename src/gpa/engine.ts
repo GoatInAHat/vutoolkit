@@ -142,3 +142,16 @@ export function cumulative(transcript: Transcript): number | null {
 export function round3(n: number | null): number | null {
   return n === null ? null : Math.round(n * 1000) / 1000;
 }
+
+/**
+ * Does the engine's recomputed term GPA reproduce what YES posted? YES displays GPAs
+ * truncated to 3 decimals (live 2026-09-15: 26.10/10.50 = 2.48571..., posted 2.485), so the
+ * truncated and rounded 3-decimal renderings both count as exact reproductions — neither is a
+ * tolerance, and a real scale error moves the GPA far more than one display step.
+ */
+export function matchesPostedGpa(raw: number | null, posted: number): boolean {
+  if (raw === null) return false;
+  const rounded = round3(raw);
+  const truncated = Math.floor(raw * 1000) / 1000;
+  return rounded === posted || truncated === posted;
+}
