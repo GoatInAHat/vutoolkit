@@ -53,3 +53,6 @@ dev.toolfactory/coverage.json
 dev.toolfactory/inspector.json
 web/src/ops.json
 # /tf:ignore
+
+# machine-local GSD state
+.gsd

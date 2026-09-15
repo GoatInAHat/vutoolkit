@@ -78,6 +78,7 @@ export async function installVirtualCredential(cdp: CdpSession, m: PasskeyMateri
     authenticatorId: added.authenticatorId,
     credential: {
       credentialId: fromB64url(m.credentialId).toString("base64"),
+      rpId: m.rpId,
       privateKey: Buffer.from(pkcs8).toString("base64"),
       userHandle: fromB64url(m.userHandle).toString("base64"),
       signCount: m.signCount,
