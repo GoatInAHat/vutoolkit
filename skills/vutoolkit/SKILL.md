@@ -36,6 +36,14 @@ Arguments: `fixturePath`.
 
 `vutoolkit record.fetch --json '<arguments>'` prints a JSON result. MCP tool `record.fetch` on server `vutoolkit` returns the same result as `structuredContent`.
 
+### sessions.ensure
+
+Zero-step auth: return the cached session for the IdP, or mint a fresh one via the OneVU passkey ceremony over CDP and cache it. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Microsoft minting lands with the SSO-to-graph chain.
+
+Arguments: `idp`.
+
+`vutoolkit sessions.ensure --json '<arguments>'` prints a JSON result. MCP tool `sessions.ensure` on server `vutoolkit` returns the same result as `structuredContent`.
+
 ### sessions.forget
 
 Drop a cached session: removes its row (metadata and values) from the session vault.

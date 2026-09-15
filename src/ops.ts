@@ -15,6 +15,7 @@ import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
 import { FileSessionStore, harvestToStoredSession } from "./vault/file-store.js";
+import { ensureSession } from "./sso/ensure.js";
 import { operation, type Context } from "./toolfactory/types.js";
 
 const transcriptSchema = z.object({
@@ -136,6 +137,22 @@ export const operations = [
       await vaultStore(ctx).put(session);
       return { idp, ingested: session.cookies.length, acquiredAt: session.acquiredAt, expiresAt: session.expiresAt };
     },
+  }),
+  operation({
+    name: "sessions.ensure",
+    description:
+      "Zero-step auth: return the cached session for the IdP, or mint a fresh one via the OneVU passkey ceremony over CDP and cache it. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Microsoft minting lands with the SSO-to-graph chain.",
+    input: z.object({ idp: z.enum(["vanderbilt", "microsoft"]) }),
+    output: z.object({
+      source: z.enum(["cache", "minted"]),
+      idp: z.enum(["vanderbilt", "microsoft"]),
+      acquiredAt: z.string(),
+      expiresAt: z.string().optional(),
+      healthy: z.boolean(),
+      finalUrl: z.string().optional(),
+    }),
+    requires: ["secret", "net"],
+    handler: async ({ idp }, ctx) => ensureSession(idp, vaultStore(ctx)),
   }),
   operation({
     name: "record.fetch",

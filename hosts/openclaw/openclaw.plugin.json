@@ -16,6 +16,7 @@
       "gpa.verify",
       "grades.whatif",
       "record.fetch",
+      "sessions.ensure",
       "sessions.forget",
       "sessions.ingest",
       "sessions.list",

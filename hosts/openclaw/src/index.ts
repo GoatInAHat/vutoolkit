@@ -193,6 +193,30 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
+      name: "sessions.ensure",
+      description: "Zero-step auth: return the cached session for the IdP, or mint a fresh one via the OneVU passkey ceremony over CDP and cache it. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Microsoft minting lands with the SSO-to-graph chain.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "idp": {
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          }
+        },
+        "required": [
+          "idp"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("sessions.ensure").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
       name: "sessions.forget",
       description: "Drop a cached session: removes its row (metadata and values) from the session vault.",
       parameters: Type.Unsafe({
