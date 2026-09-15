@@ -229,7 +229,12 @@ export const operations = [
       for (const term of t.terms) {
         if (term.postedGpa === undefined) continue;
         const recomputed = round3(whatIf({ terms: [term] }, []).terms[0]?.gpa ?? null);
-        const match = recomputed !== null && Math.abs(recomputed - term.postedGpa) <= 0.0005;
+        // YES displays GPAs truncated to 3 decimals (live 2025 Spring: 26.10/10.50 = 2.48571…,
+        // posted 2.485), so accept the truncated display as well as the rounded one — both are
+        // exact representations, neither is a tolerance.
+        const truncated = recomputed === null ? null : Math.floor(recomputed * 1000) / 1000;
+        const match =
+          recomputed !== null && (recomputed === term.postedGpa || truncated === term.postedGpa);
         rows.push({ term: term.term, posted: term.postedGpa, recomputed, match });
       }
       const ok = rows.length > 0 && rows.every((r) => r.match);

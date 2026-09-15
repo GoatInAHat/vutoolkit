@@ -65,8 +65,11 @@ export function parseAaiRecord(html: string): Transcript {
       if (cells.length === 0) continue;
       const head = cells[0] ?? "";
       if (/^term totals/i.test(head)) {
+        // Cells: [label, earned, inPrgrs, qHrs, qPts, gpa]. An in-progress term still shows a
+        // "Term Totals … 0.000" row (seen live 2026-09-15): zero graded hours is not a posting.
+        const qHrs = num(cells[3]);
         const gpa = Number.parseFloat(cells[cells.length - 1] ?? "");
-        if (Number.isFinite(gpa)) postedGpa = gpa;
+        if (qHrs > 0 && Number.isFinite(gpa)) postedGpa = gpa;
         continue;
       }
       if (/^cumulative totals/i.test(head)) continue; // recomputed by the engine, never copied

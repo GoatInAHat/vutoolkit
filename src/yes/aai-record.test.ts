@@ -10,6 +10,7 @@ const FRAGMENT = `
 <table><tr><th>Course</th><th>Course Title</th><th>Instructor(s)/Instructional Staff</th><th>Grade</th><th>VU Credit</th><th>VU In Prgrs</th><th>Q Hrs</th><th>Q Pts</th><th>GPA</th></tr>
 <tr><td>AI-1010-01</td><td>Survey of Gen AI Tools &amp; Apps <!-- rating link --></td><td>Jesse Spencer-Smith</td><td></td><td>0.00</td><td>3.00</td><td>0.00</td><td>0.00</td><td></td></tr>
 <tr><td>CS-2281-02</td><td>Computer Architecture <!-- a > b --></td><td>Shervin Hajiamini</td><td></td><td>0.00</td><td>4.00</td><td>0.00</td><td>0.00</td><td></td></tr>
+<tr><td>Term Totals</td><td>0.00</td><td>7.00</td><td>0.00</td><td>0.00</td><td>0.000</td></tr>
 <tr><td>Cumulative Totals</td><td>17.00</td><td>7.00</td><td>12.00</td><td>38.45</td><td>3.204</td></tr>
 </table>
 </div>
@@ -29,7 +30,9 @@ describe("parseAaiRecord", () => {
     expect(transcript.terms.map((t) => t.term)).toEqual(["2025 Fall", "2026 Fall"]);
 
     const [fall25, fall26] = transcript.terms;
-    expect(fall26?.postedGpa).toBeUndefined(); // in-progress term has no Term Totals row
+    // The in-progress term's "Term Totals … 0.000" row (zero graded hours) is not a posting —
+    // seen live 2026-09-15 and it must not become postedGpa: 0.
+    expect(fall26?.postedGpa).toBeUndefined();
     expect(fall26?.courses).toEqual([
       { course: "AI-1010-01", credits: 3 }, // in-progress credits from the VU In Prgrs column
       { course: "CS-2281-02", credits: 4 },
