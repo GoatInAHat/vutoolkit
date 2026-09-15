@@ -7,12 +7,15 @@ import { execFileSync } from "node:child_process";
 import { harvestToStoredSession, type FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
 import { runSsoCeremony, type CeremonyOptions, type MintedSession, type VaultPasskey } from "./ceremony.js";
+import { microsoftSessionFromSso, type MicrosoftCeremonyOptions, type MintedMicrosoftSession } from "./microsoft.js";
 
 export type Ceremony = typeof runSsoCeremony;
 
 export interface EnsureDeps {
   /** Override for tests; defaults to the real CDP ceremony. */
   ceremony?: Ceremony;
+  /** Override for tests; defaults to the real Microsoft Entra-carry ceremony. */
+  microsoftCeremony?: typeof microsoftSessionFromSso;
   /** Override for tests; defaults to the OpenClaw vault CLI. Never logs or echoes values. */
   secretsRead?: (name: string) => string;
   env?: NodeJS.ProcessEnv;
@@ -60,15 +63,23 @@ export async function ensureSession(idp: Idp, store: FileSessionStore, deps: Ens
   if (existing && isFresh(existing, now)) {
     return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
   }
-  if (idp !== "vanderbilt") {
-    throw new VaultNotWiredError(`sessions.ensure(${idp}): microsoft minting is build-order step 2 (SSO to graph) and is not implemented yet`);
-  }
   const env = deps.env ?? process.env;
   const secretsRead = deps.secretsRead ?? defaultSecretsRead;
   const email = env.VUTOOLKIT_VU_EMAIL || secretsRead("VANDERBILT_EMAIL");
+  const cdpUrl = env.VUTOOLKIT_CDP_URL || "http://127.0.0.1:18800";
+  if (idp === "microsoft") {
+    // The Entra session lives in the browser profile: the ceremony carries it directly when it
+    // is alive, walks identifier-first + KMSI when it needs a nudge, and refuses loudly at any
+    // password prompt — a credential decision is the design note's, never a guessed secret.
+    const mintMicrosoft = deps.microsoftCeremony ?? microsoftSessionFromSso;
+    const mintedMs: MintedMicrosoftSession = await mintMicrosoft({ cdpUrl, email });
+    const storedMs = harvestToStoredSession(idp, mintedMs.cookies, mintedMs.acquiredAt);
+    await store.put(storedMs);
+    return { source: "minted", idp, acquiredAt: storedMs.acquiredAt, expiresAt: storedMs.expiresAt, healthy: true, finalUrl: mintedMs.finalUrl };
+  }
   const passkey = parseVaultPasskey(env.VUTOOLKIT_PASSKEY_JSON || secretsRead("VANDERBILT_PASSKEY"));
   const ceremonyOptions: CeremonyOptions = {
-    cdpUrl: env.VUTOOLKIT_CDP_URL || "http://127.0.0.1:18800",
+    cdpUrl,
     email,
     passkey,
   };

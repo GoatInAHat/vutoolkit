@@ -90,16 +90,25 @@ export const operations = [
   operation({
     name: "sessions.refresh",
     description:
-      "Run the OneVU passkey ceremony (CDP virtual authenticator holding the vaulted credential) and re-vault the fresh session. Credential material arrives via SecretRef — extracted or born-virtual, same contract.",
+      "Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy.",
     input: z.object({
-      idp: z.enum(["vanderbilt"]).default("vanderbilt"),
-      startUrl: z.url().default("https://onevu.vanderbilt.edu"),
-      secretRef: z.string().optional().describe("SecretRef holding PasskeyMaterialV1 JSON"),
-      headless: z.boolean().default(true),
+      idp: z.enum(["vanderbilt", "microsoft"]).default("vanderbilt"),
     }),
-    output: z.object({ acquiredAt: z.string(), expiresAt: z.string().optional() }),
+    output: z.object({
+      source: z.literal("minted"),
+      idp: z.enum(["vanderbilt", "microsoft"]),
+      acquiredAt: z.string(),
+      expiresAt: z.string().optional(),
+      healthy: z.boolean(),
+      finalUrl: z.string().optional(),
+    }),
     requires: ["secret", "browser", "net"],
-    handler: async ({ idp }) => vaultNotWired(`sessions.refresh(${idp}) passkey material resolution`),
+    handler: async ({ idp }, ctx) => {
+      const store = vaultStore(ctx);
+      await store.forget(idp);
+      const result = await ensureSession(idp, store);
+      return { ...result, source: "minted" as const };
+    },
   }),
   operation({
     name: "sessions.forget",
@@ -141,7 +150,7 @@ export const operations = [
   operation({
     name: "sessions.ensure",
     description:
-      "Zero-step auth: return the cached session for the IdP, or mint a fresh one via the OneVU passkey ceremony over CDP and cache it. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Microsoft minting lands with the SSO-to-graph chain.",
+      "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed.",
     input: z.object({ idp: z.enum(["vanderbilt", "microsoft"]) }),
     output: z.object({
       source: z.enum(["cache", "minted"]),

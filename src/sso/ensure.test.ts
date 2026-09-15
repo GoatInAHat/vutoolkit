@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError } from "../vault/index.js";
 import { isLoginSuccess, toCdpB64, type MintedSession } from "./ceremony.js";
+import { MicrosoftNotConfiguredError } from "./microsoft.js";
 import { ensureSession, parseVaultPasskey } from "./ensure.js";
 
 const dirs: string[] = [];
@@ -63,12 +64,44 @@ describe("ensureSession", () => {
     })).rejects.toThrow(VaultNotWiredError);
   });
 
-  it("microsoft minting is an honest not-yet, cache still works", async () => {
+  it("microsoft mints through the Entra-carry ceremony, then serves cache", async () => {
     const store = freshStore();
-    await expect(ensureSession("microsoft", store, DEPS)).rejects.toThrow(/build-order step 2/);
-    await store.put({ idp: "microsoft", acquiredAt: NOW.toISOString(), healthy: true, cookieHeader: "MSAL=x" });
-    const result = await ensureSession("microsoft", store, DEPS);
-    expect(result.source).toBe("cache");
+    const result = await ensureSession("microsoft", store, {
+      ...DEPS,
+      microsoftCeremony: async () => ({
+        cookies: [
+          { name: "MSAL", value: "x", domain: "login.microsoftonline.com" },
+          { name: "OIDC", value: "y", domain: "outlook.office.com" },
+        ],
+        acquiredAt: NOW.toISOString(),
+        finalUrl: "https://outlook.office.com/mail/",
+      }),
+    });
+    expect(result.source).toBe("minted");
+    expect(result.healthy).toBe(true);
+    // The outlook RP cookie must survive vault scoping alongside the IdP cookies.
+    const got = await store.get("microsoft");
+    expect(got?.cookieHeader).toContain("MSAL=x");
+    expect(got?.cookieHeader).toContain("OIDC=y");
+    const again = await ensureSession("microsoft", store, {
+      ...DEPS,
+      microsoftCeremony: async () => {
+        throw new Error("should not re-mint while the cache is fresh");
+      },
+    });
+    expect(again.source).toBe("cache");
+  });
+
+  it("microsoft refuses loudly when the Entra session reaches a password prompt", async () => {
+    const store = freshStore();
+    await expect(
+      ensureSession("microsoft", store, {
+        ...DEPS,
+        microsoftCeremony: async () => {
+          throw new MicrosoftNotConfiguredError("microsoft mint: password prompt");
+        },
+      }),
+    ).rejects.toThrow(MicrosoftNotConfiguredError);
   });
 
   it("secret names come from the vault contract; env overrides win", async () => {

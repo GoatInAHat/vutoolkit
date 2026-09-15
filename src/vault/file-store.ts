@@ -33,7 +33,9 @@ interface StoreFile {
 /** Domain suffixes that count as each IdP's session scope. Intentionally short. */
 const IDP_DOMAINS: Record<Idp, string[]> = {
   vanderbilt: ["vanderbilt.edu"],
-  microsoft: ["microsoftonline.com", "microsoft.com", "live.com", "windows.net"],
+  // The RP cookies (outlook.office.com, outlook.cloud.microsoft) ride with the IdP cookies —
+  // live probe 2026-09-15 harvested all of them in one successful outlook.office.com login.
+  microsoft: ["microsoftonline.com", "microsoft.com", "live.com", "windows.net", "office.com", "office365.com", "cloud.microsoft"],
 };
 
 function belongsToIdp(domain: string, idp: Idp): boolean {
