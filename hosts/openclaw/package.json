@@ -5,6 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "preinstall": "node -e \"require('fs').rmSync('node_modules/vutoolkit',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.json",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
