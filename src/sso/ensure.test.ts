@@ -1,13 +1,26 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError } from "../vault/index.js";
 import { classifyOktaFlow, isLoginSuccess, toCdpB64, type MintedSession } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
 import { MicrosoftNotConfiguredError, type MintedMicrosoftSession } from "./microsoft.js";
-import { ensureSession, parseVaultPasskey, type EnsureDeps } from "./ensure.js";
+import { cdpReachable } from "./cdp-driver.js";
+import { defaultEnsureBrowser, ensureSession, parseVaultPasskey, type EnsureDeps } from "./ensure.js";
+
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: vi.fn() };
+});
+vi.mock("./cdp-driver.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./cdp-driver.js")>();
+  return { ...actual, cdpReachable: vi.fn() };
+});
+const spawnMock = vi.mocked(execFileSync);
+const reachableMock = vi.mocked(cdpReachable);
 
 const dirs: string[] = [];
 function freshStore() {
@@ -43,6 +56,29 @@ const DEPS: EnsureDeps = {
   now: () => NOW,
   retryDelayMs: 0,
 };
+
+describe("defaultEnsureBrowser", () => {
+  beforeEach(() => {
+    spawnMock.mockReset();
+    reachableMock.mockReset();
+  });
+
+  it("starts the browser pinned to the openclaw profile in headless mode", async () => {
+    reachableMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await expect(defaultEnsureBrowser("http://127.0.0.1:18800")).resolves.toBeUndefined();
+    expect(spawnMock).toHaveBeenCalledWith(
+      "openclaw",
+      ["browser", "--browser-profile", "openclaw", "start", "--headless"],
+      expect.anything(),
+    );
+  });
+
+  it("never spawns when the CDP endpoint is already reachable", async () => {
+    reachableMock.mockResolvedValue(true);
+    await expect(defaultEnsureBrowser("http://127.0.0.1:18800")).resolves.toBeUndefined();
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("ensureSession", () => {
   it("returns a just-acquired cached session without probing or minting", async () => {

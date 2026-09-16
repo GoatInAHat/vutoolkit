@@ -114,12 +114,16 @@ function defaultSecretsRead(name: string): string {
 
 /**
  * Make the managed browser reachable before a ceremony drives it: a Gateway restart kills it, and
- * a ceremony against a closed CDP port would otherwise fail with a bare socket error.
+ * a ceremony against a closed CDP port would otherwise fail with a bare socket error. The start
+ * command pins the "openclaw" profile and headless mode rather than inheriting config defaults:
+ * the default profile can be node-auto-routed (a zero-config browser proxy once aimed it at a
+ * Mac, launching Chrome there while this code polls local CDP). The cdpReachable poll, not the
+ * command's exit code, stays the source of truth for readiness.
  */
-async function defaultEnsureBrowser(cdpUrl: string): Promise<void> {
+export async function defaultEnsureBrowser(cdpUrl: string): Promise<void> {
   if (await cdpReachable(cdpUrl)) return;
   try {
-    execFileSync("openclaw", ["browser", "start"], { timeout: 45_000, stdio: "ignore" });
+    execFileSync("openclaw", ["browser", "--browser-profile", "openclaw", "start", "--headless"], { timeout: 45_000, stdio: "ignore" });
   } catch {
     // The poll below, not the command's exit code, is the real signal: the browser can come up
     // while the command reports a failure.
