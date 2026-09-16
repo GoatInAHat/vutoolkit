@@ -181,9 +181,18 @@ export const operations = [
         return { transcript, source: "fixture" as const };
       }
       const store = vaultStore(ctx);
-      if (!(await store.get("vanderbilt"))) await ensureSession("vanderbilt", store);
-      const transcript = await new YesClient({ cookies: store.cookies("vanderbilt") }).academicRecord();
-      return { transcript, source: "live" as const };
+      const readRecord = () => new YesClient({ cookies: store.cookies("vanderbilt") }).academicRecord();
+      // ensureSession probes the cached session and re-mints it when dead, so the common case is
+      // one healthy fetch. The retry covers the narrow race where the session dies between the
+      // probe and this fetch: force a re-mint once before surfacing a failure to the agent.
+      await ensureSession("vanderbilt", store);
+      try {
+        return { transcript: await readRecord(), source: "live" as const };
+      } catch {
+        await store.forget("vanderbilt");
+        await ensureSession("vanderbilt", store);
+        return { transcript: await readRecord(), source: "live" as const };
+      }
     },
   }),
   operation({
