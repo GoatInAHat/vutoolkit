@@ -4,8 +4,8 @@
  * whether each operation is native, bridged, degraded, or excluded. Anything touching session
  * values or passkey material goes through the vault contract (src/vault/index.ts) and is
  * honestly gated until their wiring lands. sessions.ingest/open/list/forget are wired through
- * the file-backed FileSessionStore; sessions.refresh stays gated until the SecretLoader binding
- * plus browser ceremony land on the host side.
+ * the file-backed FileSessionStore; sessions.refresh re-mints through the same store plus the
+ * CDP ceremony (OneVU passkey or Microsoft Entra carry).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
