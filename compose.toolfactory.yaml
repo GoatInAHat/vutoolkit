@@ -2,7 +2,7 @@
 
 services:
   openclaw:
-    image: ghcr.io/openclaw/openclaw:latest-browser
+    image: ghcr.io/openclaw/openclaw:latest
     volumes:
       - .:/work
       - PLUGIN_DATA:/data

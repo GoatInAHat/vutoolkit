@@ -316,6 +316,28 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
+      name: "sessions.refresh",
+      description: "Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "idp": {
+            "default": "vanderbilt",
+            "type": "string",
+            "enum": [
+              "vanderbilt",
+              "microsoft"
+            ]
+          }
+        }
+      }),
+      execute: async (params, config) =>
+        operation("sessions.refresh").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
       name: "web",
       description: "Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL.",
       parameters: Type.Unsafe({

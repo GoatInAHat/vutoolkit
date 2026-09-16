@@ -82,8 +82,6 @@ Arguments: `idp`.
 
 `vutoolkit sessions.refresh --json '<arguments>'` prints a JSON result. MCP tool `sessions.refresh` on server `vutoolkit` returns the same result as `structuredContent`.
 
-This operation needs browser: drive this host's own browser tools and pass what they return as arguments.
-
 ### web
 
 Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL.

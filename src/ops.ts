@@ -102,7 +102,7 @@ export const operations = [
       healthy: z.boolean(),
       finalUrl: z.string().optional(),
     }),
-    requires: ["secret", "browser", "net"],
+    requires: ["secret", "net"],
     handler: async ({ idp }, ctx) => {
       const store = vaultStore(ctx);
       await store.forget(idp);

@@ -43,13 +43,5 @@ and changes nothing (openclaw 2026.8.2).
 - `sessions.ingest` — Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit. (native)
 - `sessions.list` — Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault. (native)
 - `sessions.open` — Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else. (native)
+- `sessions.refresh` — Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy. (native)
 - `web` — Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL. (native)
-
-## Not generated — `excluded:implement-in-hosts`
-
-These operations declare a capability no portable core can satisfy, so toolfactory omits them
-rather than shipping a tool that throws at call time. This package is the escape hatch: write
-them here by hand in the author's half of `hosts/openclaw/src/index.ts` (below the `// /tf:entry`
-marker), which no rebuild touches.
-
-- `sessions.refresh` — requires secret, browser, net

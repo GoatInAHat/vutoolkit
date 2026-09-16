@@ -21,6 +21,7 @@
       "sessions.ingest",
       "sessions.list",
       "sessions.open",
+      "sessions.refresh",
       "web"
     ]
   }

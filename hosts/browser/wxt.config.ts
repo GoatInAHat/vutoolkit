@@ -9,7 +9,7 @@ import { defineConfig } from "wxt";
 export const CHROMIUM_ONLY = ["sidePanel", "debugger", "tabGroups"];
 const CHROMIUM = ["chrome", "edge"];
 
-const PERMISSIONS = ["storage", "activeTab"];
+const PERMISSIONS = ["storage"];
 const HOST_PERMISSIONS = ["http://127.0.0.1/*", "http://localhost/*"];
 const web = resolve(import.meta.dirname, "../../web/src");
 

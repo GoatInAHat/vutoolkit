@@ -6,7 +6,7 @@ import entry from "./index.js";
 
 describe("vutoolkit", () => {
   it("declares tool metadata", () => {
-    expect(getToolPluginMetadata(entry)?.tools.map((tool) => tool.name)).toEqual(["gpa.verify","grades.whatif","record.fetch","sessions.ensure","sessions.forget","sessions.ingest","sessions.list","sessions.open","web"]);
+    expect(getToolPluginMetadata(entry)?.tools.map((tool) => tool.name)).toEqual(["gpa.verify","grades.whatif","record.fetch","sessions.ensure","sessions.forget","sessions.ingest","sessions.list","sessions.open","sessions.refresh","web"]);
   });
 
   it("serves the web app as a Control UI tab", () => {

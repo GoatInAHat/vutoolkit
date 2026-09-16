@@ -680,7 +680,6 @@
         "dev.toolfactory": {
           "requires": [
             "secret",
-            "browser",
             "net"
           ]
         }
