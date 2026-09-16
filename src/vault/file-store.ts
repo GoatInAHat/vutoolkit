@@ -4,7 +4,7 @@
  * written by sessions.ingest and served by sessions.open; nothing else touches them, and no
  * code path logs or echoes cookie material.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { VaultNotWiredError, type Idp, type SessionMeta, type SessionStore, type StoredSession } from "./index.js";
 
@@ -109,22 +109,32 @@ export function harvestToStoredSession(
 export class FileSessionStore implements SessionStore {
   constructor(private readonly filePath: string) {}
 
-  private read(): StoreFile {
-    if (!existsSync(this.filePath)) return { version: 1, rows: {} };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(readFileSync(this.filePath, "utf8"));
-    } catch {
-      throw new VaultNotWiredError("Session vault file is unreadable or corrupt");
-    }
-    if (typeof parsed !== "object" || parsed === null) throw new VaultNotWiredError("Session vault file is corrupt");
-    return parsed as StoreFile;
+  /** The vault file this store reads and writes; identifies the store for single-flight keys. */
+  get location(): string {
+    return this.filePath;
   }
 
+  /**
+   * The vault is a cache of mintable sessions, so an unreadable or corrupt file reads as empty:
+   * the next ensure re-mints and the next write replaces it, instead of every tool call failing.
+   */
+  private read(): StoreFile {
+    if (!existsSync(this.filePath)) return { version: 1, rows: {} };
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(this.filePath, "utf8"));
+      const rows = (parsed as { rows?: unknown } | null)?.rows;
+      if (typeof rows === "object" && rows !== null) return parsed as StoreFile;
+    } catch { /* fall through to empty */ }
+    return { version: 1, rows: {} };
+  }
+
+  /** Write to a sibling temp file, then rename: a crash or a concurrent writer never leaves a torn file. */
   private write(file: StoreFile): void {
     mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, JSON.stringify(file, null, 2) + "\n", { mode: 0o600 });
-    try { chmodSync(this.filePath, 0o600); } catch { /* best-effort on filesystems without chmod */ }
+    const temp = `${this.filePath}.${process.pid}.tmp`;
+    writeFileSync(temp, JSON.stringify(file, null, 2) + "\n", { mode: 0o600 });
+    try { chmodSync(temp, 0o600); } catch { /* best-effort on filesystems without chmod */ }
+    renameSync(temp, this.filePath);
   }
 
   async list(): Promise<SessionMeta[]> {

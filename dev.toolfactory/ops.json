@@ -618,7 +618,8 @@
       "_meta": {
         "dev.toolfactory": {
           "requires": [
-            "secret"
+            "secret",
+            "net"
           ]
         }
       }

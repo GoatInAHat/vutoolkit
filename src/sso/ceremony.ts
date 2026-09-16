@@ -5,11 +5,18 @@
  * own browser tab (created and closed by the shared driver) so a shared managed browser is
  * never disturbed.
  *
+ * The flow is a polling state machine with a deadline rather than a fixed script: the page is
+ * probed every step and the ceremony acts on what is actually rendered. That covers the
+ * already-signed-in profile, an Okta that skips the identifier because it remembers the user,
+ * slow page loads, and a re-rendered identifier form, and it fails with Okta's own error text
+ * instead of a timeout when OneVU rejects the attempt.
+ *
  * I/O honesty: this module speaks CDP over the network and returns the minted session in
  * memory. It never logs, writes, or echoes cookie or key material; errors carry no values.
  */
 import type { CookieRecord } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, harvestCookies, withCdpTab } from "./cdp-driver.js";
+import { AuthError } from "./errors.js";
 
 /** The passkey as the vault stores it: raw base64url-ish fields, not the v1 JWK envelope. */
 export interface VaultPasskey {
@@ -28,6 +35,8 @@ export interface CeremonyOptions {
   passkey: VaultPasskey;
   loginUrl?: string;
   stepMs?: number;
+  /** Whole-ceremony deadline; defaults to 120 seconds. */
+  timeoutMs?: number;
 }
 
 export interface MintedSession {
@@ -56,8 +65,51 @@ export function isLoginSuccess(url: string): boolean {
   return !/onevu\.vanderbilt\.edu/.test(url);
 }
 
+/** One observation of the OneVU page. */
+export interface OktaProbe {
+  url: string;
+  /** The identifier (email) input is rendered. */
+  identifier: boolean;
+  /** The webauthn authenticator's Select button is rendered. */
+  webauthn: boolean;
+  /** Okta's form error text, empty when none is shown. */
+  error: string;
+}
+
+export type OktaFlowState =
+  | { kind: "success" }
+  | { kind: "error"; message: string }
+  | { kind: "webauthn" }
+  | { kind: "identifier" }
+  | { kind: "wait" };
+
+/** Pure state machine over one probe; the ceremony only acts on it. */
+export function classifyOktaFlow(probe: OktaProbe): OktaFlowState {
+  if (isLoginSuccess(probe.url)) return { kind: "success" };
+  if (probe.error) return { kind: "error", message: probe.error };
+  if (probe.webauthn) return { kind: "webauthn" };
+  if (probe.identifier) return { kind: "identifier" };
+  return { kind: "wait" };
+}
+
+const PROBE_EXPR =
+  "(() => {" +
+  " const vis = (s) => { const e = document.querySelector(s); return !!(e && (e.offsetParent || e.getClientRects().length)); };" +
+  " const errEl = document.querySelector('.o-form-error-container');" +
+  " const error = errEl ? (errEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 200) : '';" +
+  " return { url: location.href, identifier: vis('input[name=identifier]'), webauthn: vis('[data-se=webauthn] [data-se=button]'), error };" +
+  "})()";
+
+/** Tick Okta's "Keep me signed in" when it is offered, so the Okta session survives browser restarts. */
+const KEEP_SIGNED_IN =
+  "(() => { const box = document.querySelector('input[name=rememberMe]');" +
+  " if (!box || box.checked) return false; box.click(); return box.checked; })()";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSession> {
-  const stepMs = opts.stepMs ?? 2000;
+  const stepMs = opts.stepMs ?? 1500;
+  const timeoutMs = opts.timeoutMs ?? 120_000;
   const loginUrl = opts.loginUrl ?? "https://onevu.vanderbilt.edu/";
   return withCdpTab(opts.cdpUrl, loginUrl, async (tab) => {
     const { send, evaluate } = tab;
@@ -78,41 +130,53 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
         signCount: signCountUsed,
       },
     });
-    // The driver created the tab on the login URL; give the page a first beat, then drive.
-    await new Promise((r) => setTimeout(r, 9000));
-    // Graceful path: a persistent browser profile may already hold a live session, in which
-    // case the login page never renders and we go straight to harvesting cookies.
-    let finalUrl = String((await evaluate("location.href")) ?? "");
-    let success = isLoginSuccess(finalUrl);
-    if (!success) {
-      const filled = await evaluate(`(${FILL_NATIVE})('input[name=identifier]', ${JSON.stringify(opts.email)})`);
-      if (filled !== true) throw new Error("ceremony: identifier field not found on the login page");
-      const submitted = await evaluate(`(${CLICK_VISIBLE})('input[type=submit],button[type=submit]')`);
-      if (submitted !== true) throw new Error("ceremony: submit control not found");
-      await new Promise((r) => setTimeout(r, 5000));
-      let chooser = false;
-      for (let i = 0; i < 6 && !chooser; i++) {
-        chooser = (await evaluate(`(${CLICK_VISIBLE})('[data-se=webauthn] [data-se=button]')`)) === true;
-        if (!chooser) await new Promise((r) => setTimeout(r, stepMs));
+
+    const deadline = Date.now() + timeoutMs;
+    let finalUrl = "";
+    let identifierSubmits = 0;
+    let webauthnClicks = 0;
+    let first = true;
+    while (Date.now() < deadline) {
+      await sleep(first ? 2500 : stepMs);
+      first = false;
+      const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as OktaProbe | null;
+      if (!probe) continue; // mid-navigation; probe again
+      finalUrl = String(probe.url ?? "");
+      const state = classifyOktaFlow(probe);
+      if (state.kind === "success") {
+        const cookies = await harvestCookies(send);
+        const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
+        return {
+          cookies,
+          acquiredAt: new Date().toISOString(),
+          expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
+          finalUrl,
+          signCountUsed,
+        };
       }
-      if (!chooser) throw new Error("ceremony: webauthn authenticator option never appeared");
-      for (let i = 0; i < 20 && !success; i++) {
-        await new Promise((r) => setTimeout(r, stepMs));
-        try {
-          finalUrl = String((await evaluate("location.href")) ?? "");
-          success = isLoginSuccess(finalUrl);
-        } catch { /* transient evaluate failures during navigation are fine */ }
+      if (state.kind === "error") {
+        throw new AuthError("OKTA_REJECTED", `OneVU sign-in showed an error: "${state.message}"`, { retryable: true });
+      }
+      if (state.kind === "webauthn" && webauthnClicks < 3) {
+        if ((await evaluate(`(${CLICK_VISIBLE})('[data-se=webauthn] [data-se=button]')`).catch(() => false)) === true) webauthnClicks++;
+        continue;
+      }
+      if (state.kind === "identifier" && identifierSubmits < 2) {
+        const filled = await evaluate(`(${FILL_NATIVE})('input[name=identifier]', ${JSON.stringify(opts.email)})`).catch(() => false);
+        if (filled !== true) continue;
+        await evaluate(KEEP_SIGNED_IN).catch(() => false);
+        if ((await evaluate(`(${CLICK_VISIBLE})('input[type=submit],button[type=submit]')`).catch(() => false)) === true) identifierSubmits++;
       }
     }
-    if (!success) throw new Error(`ceremony: login did not reach OneVU home (ended on ${new URL(finalUrl || "about:blank").pathname})`);
-    const cookies = await harvestCookies(send);
-    const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
-    return {
-      cookies,
-      acquiredAt: new Date().toISOString(),
-      expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
-      finalUrl,
-      signCountUsed,
-    };
+    let where = "an unknown page";
+    try {
+      const u = new URL(finalUrl);
+      where = u.host + u.pathname;
+    } catch { /* keep default */ }
+    throw new AuthError(
+      "OKTA_FLOW_CHANGED",
+      `OneVU sign-in did not reach the OneVU home within ${Math.round(timeoutMs / 1000)}s (last page ${where}; identifier submits ${identifierSubmits}, passkey selections ${webauthnClicks})`,
+      { retryable: true },
+    );
   });
 }

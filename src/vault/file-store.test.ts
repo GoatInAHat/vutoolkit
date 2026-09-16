@@ -87,10 +87,19 @@ describe("FileSessionStore", () => {
     expect(storageState.cookies.every((c) => typeof c.expires === "number")).toBe(true);
   });
 
-  it("treats a corrupt vault file as vault-unavailable", async () => {
+  it("reads a corrupt vault file as empty and replaces it on the next write", async () => {
     const { dir } = freshStore();
     const path = join(dir, "sessions.vault.json");
     writeFileSync(path, "not json{");
-    await expect(new FileSessionStore(path).list()).rejects.toThrow(VaultNotWiredError);
+    const store = new FileSessionStore(path);
+    expect(await store.list()).toEqual([]);
+    await store.put(harvestToStoredSession("vanderbilt", syntheticHarvest(), NOW));
+    expect((await store.list()).map((s) => s.idp)).toEqual(["vanderbilt"]);
+  });
+
+  it("names its vault file as its location", () => {
+    const { dir } = freshStore();
+    const path = join(dir, "sessions.vault.json");
+    expect(new FileSessionStore(path).location).toBe(path);
   });
 });

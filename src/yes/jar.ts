@@ -68,6 +68,8 @@ export interface JarFetchOptions {
   headers?: Record<string, string>;
   fetchImpl?: typeof fetch;
   maxHops?: number;
+  /** Per-hop bound, headers and body included; defaults to 20 seconds. */
+  hopTimeoutMs?: number;
 }
 
 /**
@@ -78,13 +80,17 @@ export interface JarFetchOptions {
 export async function jarFetch(url: string, opts: JarFetchOptions): Promise<JarFetchResult> {
   const impl = opts.fetchImpl ?? fetch;
   const maxHops = opts.maxHops ?? 12;
+  const hopTimeoutMs = opts.hopTimeoutMs ?? 20_000;
   let current = url;
   const trace: string[] = [];
   for (let hop = 0; hop <= maxHops; hop++) {
     assertSafe(current, "GET");
     const cookie = opts.jar.headerFor(current);
+    // One signal per hop bounds both the response and the body read below.
+    const signal = AbortSignal.timeout(hopTimeoutMs);
     const res = await impl(current, {
       redirect: "manual",
+      signal,
       headers: {
         "user-agent": "vutoolkit/0.1 (YES read-only client)",
         ...(opts.headers ?? {}),

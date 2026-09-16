@@ -45,9 +45,11 @@ export async function probeVanderbilt(cookies: CookieRecord[], fetchImpl?: typeo
 }
 
 /**
- * Alive iff the office.com silent authorize returns to office.com. A dead session lands on the
- * AAD sign-in page (login.microsoftonline.com / login.live.com), which is the honest death
- * signal — the outlook SPA shell itself renders either way, so it cannot be probed directly.
+ * Alive iff office.com's silent authorize succeeds. The Outlook SPA shell renders with or
+ * without a session, so it cannot be probed directly. Verified live 2026-09-16:
+ * - live session: the authorize page on login.microsoftonline.com answers 200 with an
+ *   auto-submitting form_post (hidden `code` and `id_token`) whose action leaves the login host;
+ * - dead session: the same URL renders the AAD sign-in page (loginfmt / urlPost config).
  */
 export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof fetch): Promise<boolean> {
   if (cookies.length === 0) return false;
@@ -57,9 +59,29 @@ export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof
       headers: { "user-agent": BROWSER_UA },
       fetchImpl,
     });
-    if (res.status !== 200) return false;
-    const host = new URL(res.finalUrl).hostname;
-    return !(/(^|\.)login\.microsoftonline\.com$/.test(host) || /(^|\.)login\.live\.com$/.test(host));
+    return classifyMicrosoftProbe(res.status, res.finalUrl, res.text);
+  } catch {
+    return false;
+  }
+}
+
+const LOGIN_HOST = /(^|\.)(login\.microsoftonline\.com|login\.live\.com)$/;
+
+/** Pure verdict over the silent-authorize response; exported for tests. */
+export function classifyMicrosoftProbe(status: number, finalUrl: string, html: string): boolean {
+  if (status !== 200) return false;
+  let host: string;
+  try {
+    host = new URL(finalUrl).hostname;
+  } catch {
+    return false;
+  }
+  if (!LOGIN_HOST.test(host)) return true; // landed back on the relying party
+  if (/name="loginfmt"|"urlPost"/.test(html)) return false; // the sign-in page
+  const action = /<form[^>]*\baction="([^"]+)"/i.exec(html)?.[1];
+  if (!action || !/name="(code|id_token)"/.test(html)) return false;
+  try {
+    return !LOGIN_HOST.test(new URL(action.replace(/&amp;/g, "&"), finalUrl).hostname);
   } catch {
     return false;
   }

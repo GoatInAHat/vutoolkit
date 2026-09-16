@@ -31,6 +31,21 @@ describe("classifyMicrosoftFlow", () => {
     expect(classifyMicrosoftFlow({ ...base, loginfmt: true }).kind).toBe("identifier");
     expect(classifyMicrosoftFlow(base).kind).toBe("wait");
   });
+
+  it("recognizes the federation hop stopping on OneVU sign-in, ahead of kmsi and identifier", () => {
+    const onevu = { ...base, url: "https://onevu.vanderbilt.edu/app/office365/x/sso/wsfed/passive", okta: true };
+    expect(classifyMicrosoftFlow({ ...onevu, kmsi: true, loginfmt: true }).kind).toBe("okta");
+    expect(classifyMicrosoftFlow({ ...onevu, passwd: true }).kind).toBe("password");
+  });
+
+  it("recognizes the account picker after kmsi and before the identifier field", () => {
+    expect(classifyMicrosoftFlow({ ...base, picker: true, loginfmt: true }).kind).toBe("picker");
+    expect(classifyMicrosoftFlow({ ...base, picker: true, kmsi: true }).kind).toBe("kmsi");
+  });
+
+  it("accepts the outlook.cloud.microsoft landing", () => {
+    expect(isMicrosoftSuccess("https://outlook.cloud.microsoft/mail/")).toBe(true);
+  });
 });
 
 describe("MicrosoftNotConfiguredError", () => {

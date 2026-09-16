@@ -66,11 +66,13 @@ export const operations = [
       format: z.enum(["cookie-header", "cdp", "storage-state"]).default("cookie-header"),
     }),
     output: z.object({ payload: z.unknown() }),
-    requires: ["secret"],
+    requires: ["secret", "net"],
     handler: async ({ idp, format }, ctx) => {
       const store = vaultStore(ctx);
+      // Serve only a live session: ensure re-mints a missing or dead one before the payload is built.
+      await ensureSession(idp, store);
       const session = await store.get(idp);
-      if (!session) throw vaultNotWired(`sessions.open(${idp}): no stored session — run sessions.ingest first`);
+      if (!session) throw vaultNotWired(`sessions.open(${idp}): the session vault holds no session after ensure`);
       if (format === "cookie-header") return { payload: session.cookieHeader };
       if (format === "cdp") {
         return {

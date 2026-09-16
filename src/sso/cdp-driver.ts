@@ -19,10 +19,16 @@ export function augmentNoProxy(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
+/** Loopback CDP answers in milliseconds; these bounds only stop a dead browser from hanging a tool call. */
+const HTTP_TIMEOUT_MS = 10_000;
+const WS_OPEN_TIMEOUT_MS = 10_000;
+const SEND_TIMEOUT_MS = 30_000;
+
 /**
  * Open the ceremony's own tab, run fn with a send/evaluate channel, close the tab afterwards.
  * Navigation wait is the caller's job (poll location.href) — pages differ too much for a fixed
- * ready signal to be honest.
+ * ready signal to be honest. Every CDP round-trip is bounded: a browser that dies mid-ceremony
+ * rejects pending calls instead of leaving the caller waiting forever.
  */
 export async function withCdpTab<T>(
   cdpUrl: string,
@@ -30,22 +36,32 @@ export async function withCdpTab<T>(
   fn: (tab: CdpTab) => Promise<T>,
 ): Promise<T> {
   augmentNoProxy();
-  const blank = await fetch(new URL("/json/new?" + startUrl, cdpUrl), { method: "PUT" });
+  const blank = await fetch(new URL("/json/new?" + startUrl, cdpUrl), {
+    method: "PUT",
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
   if (!blank.ok) throw new Error("ceremony could not open a tab (HTTP " + blank.status + ")");
   const tab = (await blank.json()) as { id: string; webSocketDebuggerUrl: string };
   const ws = new WebSocket(tab.webSocketDebuggerUrl);
+  const pending = new Map<number, { settle: (m: { id?: number; error?: unknown; result?: unknown }) => void; fail: (e: Error) => void }>();
+  const failAll = (reason: string): void => {
+    for (const entry of pending.values()) entry.fail(new Error(reason));
+    pending.clear();
+  };
   try {
     await new Promise<void>((res, rej) => {
-      ws.onopen = () => res();
-      ws.onerror = () => rej(new Error("ceremony CDP websocket failed"));
+      const timer = setTimeout(() => rej(new Error("ceremony CDP websocket did not open")), WS_OPEN_TIMEOUT_MS);
+      ws.onopen = () => { clearTimeout(timer); res(); };
+      ws.onerror = () => { clearTimeout(timer); rej(new Error("ceremony CDP websocket failed")); };
     });
+    ws.onclose = () => failAll("ceremony CDP websocket closed");
+    ws.onerror = () => failAll("ceremony CDP websocket failed");
     let mid = 0;
-    const pending = new Map<number, (m: { id?: number; error?: unknown; result?: unknown }) => void>();
     ws.onmessage = (ev) => {
       try {
         const m = JSON.parse(String(ev.data)) as { id?: number; error?: unknown; result?: unknown };
         if (m.id && pending.has(m.id)) {
-          pending.get(m.id)!(m);
+          pending.get(m.id)!.settle(m);
           pending.delete(m.id);
         }
       } catch { /* non-JSON frames are events; ignored */ }
@@ -53,8 +69,25 @@ export async function withCdpTab<T>(
     const send = <R = unknown>(method: string, params: Record<string, unknown> = {}): Promise<R> =>
       new Promise((res, rej) => {
         const id = ++mid;
-        pending.set(id, (m) => (m.error ? rej(new Error("ceremony: " + method + " failed")) : res(m.result as R)));
-        ws.send(JSON.stringify({ id, method, params }));
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          rej(new Error("ceremony: " + method + " timed out"));
+        }, SEND_TIMEOUT_MS);
+        pending.set(id, {
+          settle: (m) => {
+            clearTimeout(timer);
+            if (m.error) rej(new Error("ceremony: " + method + " failed"));
+            else res(m.result as R);
+          },
+          fail: (e) => { clearTimeout(timer); rej(e); },
+        });
+        try {
+          ws.send(JSON.stringify({ id, method, params }));
+        } catch {
+          clearTimeout(timer);
+          pending.delete(id);
+          rej(new Error("ceremony: " + method + " could not be sent"));
+        }
       });
     const evaluate = async (expression: string): Promise<unknown> => {
       const r = await send<{ result?: { value?: unknown } }>("Runtime.evaluate", {
@@ -66,10 +99,23 @@ export async function withCdpTab<T>(
     };
     return await fn({ send, evaluate, tabId: tab.id });
   } finally {
+    ws.onclose = null;
+    failAll("ceremony finished");
     ws.close();
     try {
-      await fetch(new URL("/json/close/" + tab.id, cdpUrl));
+      await fetch(new URL("/json/close/" + tab.id, cdpUrl), { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     } catch { /* tab cleanup best-effort */ }
+  }
+}
+
+/** Whether a CDP endpoint answers /json/version; never throws. */
+export async function cdpReachable(cdpUrl: string, timeoutMs = 2500): Promise<boolean> {
+  augmentNoProxy();
+  try {
+    const res = await fetch(new URL("/json/version", cdpUrl), { signal: AbortSignal.timeout(timeoutMs) });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
