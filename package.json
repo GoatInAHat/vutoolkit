@@ -22,7 +22,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "test:live": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/live.test.ts"
+    "test:live": "node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/live.test.ts",
+    "relink": "npm -C web run build && openclaw plugins install --link hosts/openclaw --force --accept-capabilities"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.0.0",

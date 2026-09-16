@@ -119,3 +119,13 @@ Calling toolfactory over MCP from inside one: pass `root` explicitly. A stdio MC
 static, config-time working directory, so it cannot tell which worktree you are in.
 
 <!-- /tf:agents -->
+
+## Web UI relink
+
+The gateway's linked plugin can serve a stale copy of the web app (or the core
+package) after a rebuild: the install snapshot only refreshes on relink, and
+npm refuses to refresh a same-version `file:` dep. After touching `web/` or
+the core source, run `npm run relink` — it rebuilds `web/dist` and reinstalls
+the linked host plugin in one step. Restart the gateway (`openclaw gateway
+restart`) to load it. Release CI always builds `web/dist` fresh, so published
+artifacts are never stale.
