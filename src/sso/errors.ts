@@ -16,6 +16,8 @@ export type AuthErrorCode =
   | "MICROSOFT_FLOW_CHANGED"
   /** Microsoft sign-in bounced to OneVU because the browser holds no live Okta session. */
   | "OKTA_SESSION_REQUIRED"
+  /** The silent OAuth authorize for Graph refused the vaulted session, or the code exchange failed. */
+  | "GRAPH_TOKEN_UNAVAILABLE"
   /** A step exceeded its deadline. */
   | "TIMEOUT";
 

@@ -28,6 +28,14 @@ Arguments: `transcript`, `hypotheticals`.
 
 `vutoolkit grades.whatif --json '<arguments>'` prints a JSON result. MCP tool `grades.whatif` on server `vutoolkit` returns the same result as `structuredContent`.
 
+### graph.call
+
+Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {"$top": 10, "$select": "subject,from"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.
+
+Arguments: `method`, `path`, `query`, `body`.
+
+`vutoolkit graph.call --json '<arguments>'` prints a JSON result. MCP tool `graph.call` on server `vutoolkit` returns the same result as `structuredContent`.
+
 ### record.fetch
 
 The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.

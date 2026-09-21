@@ -15,6 +15,7 @@
     "tools": [
       "gpa.verify",
       "grades.whatif",
+      "graph.call",
       "record.fetch",
       "sessions.ensure",
       "sessions.forget",

@@ -15,7 +15,9 @@ import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
 import { FileSessionStore, harvestToStoredSession } from "./vault/file-store.js";
-import { ensureSession } from "./sso/ensure.js";
+import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
+import { graphCall } from "./graph/client.js";
+import { ensureGraphToken, GraphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
 
 const transcriptSchema = z.object({
@@ -37,6 +39,19 @@ type TranscriptArgs = z.infer<typeof transcriptSchema>;
 
 /** The session vault: one 0600 JSON file in the tool's data dir, values never in tool output. */
 const vaultStore = (ctx: Context): FileSessionStore => new FileSessionStore(join(ctx.dataDir, "sessions.vault.json"));
+
+/**
+ * Optional login_hint for the silent Graph authorize: env first, then the vault. Absence is fine -
+ * the vaulted session's cookies carry the identity (live-proven without a hint 2026-09-21).
+ */
+const bestEffortLoginHint = (): string | undefined => {
+  if (process.env.VUTOOLKIT_VU_EMAIL) return process.env.VUTOOLKIT_VU_EMAIL;
+  try {
+    return defaultSecretsRead("VANDERBILT_EMAIL");
+  } catch {
+    return undefined;
+  }
+};
 
 export const operations = [
   operation({
@@ -164,6 +179,29 @@ export const operations = [
     }),
     requires: ["secret", "net"],
     handler: async ({ idp }, ctx) => ensureSession(idp, vaultStore(ctx)),
+  }),
+  operation({
+    name: "graph.call",
+    description:
+      "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
+    input: z.object({
+      method: z.enum(["GET", "POST", "PATCH", "PUT", "DELETE"]).default("GET"),
+      path: z.string().regex(/^\/(?!\/)/, "a relative Graph v1.0 path starting with a single /"),
+      query: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+      body: z.unknown().optional(),
+    }),
+    output: z.object({ status: z.number(), data: z.unknown() }),
+    requires: ["net", "secret"],
+    handler: async ({ method, path, query, body }, ctx) => {
+      const store = vaultStore(ctx);
+      await ensureSession("microsoft", store);
+      const cache = new GraphTokenCache(join(ctx.dataDir, "graph-token.json"));
+      const getToken = (opts: { force?: boolean }): Promise<string> =>
+        ensureGraphToken(store.cookies("microsoft"), cache, { ...opts, loginHint: bestEffortLoginHint() }).then(
+          (token) => token.accessToken,
+        );
+      return graphCall(method, path, query, body, getToken);
+    },
   }),
   operation({
     name: "record.fetch",

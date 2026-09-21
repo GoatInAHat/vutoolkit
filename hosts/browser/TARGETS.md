@@ -11,6 +11,7 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 |---|---|---|---|
 | `gpa.verify` | native | native | native |
 | `grades.whatif` | native | native | native |
+| `graph.call` | native | native | native |
 | `record.fetch` | native | native | native |
 | `sessions.ensure` | native | native | native |
 | `sessions.forget` | native | native | native |

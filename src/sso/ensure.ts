@@ -95,7 +95,7 @@ export function parseVaultPasskey(raw: string): VaultPasskey {
   return { credentialId: v.credentialId, privateKey: v.privateKey, userHandle: v.userHandle, rpId: v.rpId, signCount: v.signCount };
 }
 
-function defaultSecretsRead(name: string): string {
+export function defaultSecretsRead(name: string): string {
   let value = "";
   try {
     value = execFileSync("openclaw", ["secrets", "store", "get", name, "--plain"], {
