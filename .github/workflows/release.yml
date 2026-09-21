@@ -138,7 +138,7 @@ jobs:
       - name: web tarball
         run: tar -czf dist/release/vutoolkit-web.tar.gz -C web/dist .
       - name: browser extension zips
-        run: npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b chrome && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b firefox && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b edge && cp hosts/browser/.output/vutoolkit-0.1.1-chrome.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.1.1-firefox.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.1.1-edge.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.1.1-sources.zip dist/release/
+        run: npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b chrome && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b firefox && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b edge && cp hosts/browser/.output/vutoolkit-0.2.0-chrome.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-firefox.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-edge.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-sources.zip dist/release/
       - name: Firefox signed xpi (only when FIREFOX_JWT_ISSUER/FIREFOX_JWT_SECRET are set)
         run: if [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then npm --prefix hosts/browser exec --no -- web-ext sign --channel=unlisted --api-key="$FIREFOX_JWT_ISSUER" --api-secret="$FIREFOX_JWT_SECRET" --source-dir hosts/browser/.output/firefox-mv2 --artifacts-dir dist/release; fi
       - name: coverage report
@@ -173,7 +173,7 @@ jobs:
       - name: npm publish
         env:
           NPM_TOKEN: ${{ vars.NPM_TRUSTED_PUBLISHER != 'true' && secrets.NPM_TOKEN || '' }}
-        run: 'if npm view vutoolkit@0.1.1 version >/dev/null 2>&1; then echo "::notice::npm: vutoolkit@0.1.1 already published; skipping immutable version."; elif [ "$NPM_TRUSTED_PUBLISHER" = true ]; then npm publish ./release-assets/vutoolkit-0.1.1.tgz --access public; else NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish ./release-assets/vutoolkit-0.1.1.tgz --access public; fi'
+        run: 'if npm view vutoolkit@0.2.0 version >/dev/null 2>&1; then echo "::notice::npm: vutoolkit@0.2.0 already published; skipping immutable version."; elif [ "$NPM_TRUSTED_PUBLISHER" = true ]; then npm publish ./release-assets/vutoolkit-0.2.0.tgz --access public; else NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish ./release-assets/vutoolkit-0.2.0.tgz --access public; fi'
   publish-browser-ext:
     needs:
       - gate
@@ -211,17 +211,17 @@ jobs:
       - name: wxt submit --dry-run (zips, plus a live credential read for Chrome and Firefox)
         run: |-
           flags=""
-          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.1.1-chrome.zip"; fi
-          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.1.1-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.1.1-sources.zip"; fi
-          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.1.1-edge.zip"; fi
+          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.2.0-chrome.zip"; fi
+          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.2.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.2.0-sources.zip"; fi
+          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.2.0-edge.zip"; fi
           if [ -z "$flags" ]; then echo "No browser store credentials configured; skipping wxt submit."; exit 0; fi
           npm --prefix hosts/browser exec --no -- wxt submit --dry-run $flags
       - name: wxt submit
         run: |-
           flags=""
-          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.1.1-chrome.zip"; fi
-          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.1.1-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.1.1-sources.zip"; fi
-          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.1.1-edge.zip"; fi
+          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.2.0-chrome.zip"; fi
+          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.2.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.2.0-sources.zip"; fi
+          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.2.0-edge.zip"; fi
           if [ -z "$flags" ]; then echo "No browser store credentials configured; skipping wxt submit."; exit 0; fi
           npm --prefix hosts/browser exec --no -- wxt submit $flags
   release:

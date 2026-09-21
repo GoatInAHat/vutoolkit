@@ -33,7 +33,7 @@ const introspecting = Boolean(process.env.TOOLFACTORY_INTROSPECT);
 
 /** Builds one server instance with every servable operation registered; called once for stdio, once per HTTP request. */
 function createServer(): McpServer {
-  const server = new McpServer({ name: "vutoolkit", version: "0.1.1" });
+  const server = new McpServer({ name: "vutoolkit", version: "0.2.0" });
   for (const op of operations) {
     if (!introspecting && !serves(op, "mcp")) continue;
     server.registerTool(

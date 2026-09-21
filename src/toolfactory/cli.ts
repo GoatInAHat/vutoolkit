@@ -13,7 +13,7 @@ const operations = [...authored, web];
 const program = new Command()
   .name("vutoolkit")
   .description("Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.")
-  .version("0.1.1");
+  .version("0.2.0");
 
 for (const op of operations) {
   if (!serves(op, "cli")) continue;
