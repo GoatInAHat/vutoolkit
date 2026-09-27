@@ -1,10 +1,10 @@
 # Release acceptance
 
-This record describes the **v0.3.0 release candidate**, checked on **2026-09-27 UTC**. It separates implemented behavior, authenticated evidence, and remaining work. It is not a claim that every original requirement has been exercised against every account or browser.
+This record covers **v0.4.0**, checked on **2026-09-27 UTC**, and preserves the v0.3.0 baseline below. The [v0.4.0 acceptance section](#040-deterministic-setup-acceptance) supersedes the baseline test counts and setup behavior. It separates implemented behavior, authenticated evidence, and remaining work. It is not a claim that every original requirement has been exercised against every account or browser.
 
 The original request is preserved in [SPEC.md](SPEC.md). Generated operation/surface availability is recorded in [COVERAGE.md](../COVERAGE.md); an operation appearing there does not establish runtime correctness or registry publication.
 
-## Reproduced checks
+## v0.3.0 baseline checks
 
 | Check | Result | Evidence and scope |
 | --- | --- | --- |
@@ -92,3 +92,18 @@ No passkey enrollment, academic write, cart change, Graph mutation, or email sen
 Live account enrollment and installed-version receipts are recorded separately in the release verification report; fixture success alone is not live enrollment proof. No real cart or enrollment changes are part of this release's read-only academic checks.
 
 On 2026-09-27, v0.4.0 passed 178 unit tests, 28 surface validators, the production synthetic browser checks (including exactly one setup operation from the Connect action), and all 13 read-only live tests. `setup.run({confirm:true,allowInteractiveVerification:false})` on the existing release account returned `ready`, verified a real isolated passkey assertion, and established both Vanderbilt and Microsoft sessions. This is existing-key acceptance, not new-key enrollment proof.
+
+
+## v0.4.0 distribution status
+
+Checked 2026-09-27 UTC. Distribution is tracked independently from passing tests.
+
+| Surface | Observed state |
+| --- | --- |
+| GitHub | [v0.4.0](https://github.com/GoatInAHat/vutoolkit/releases/tag/v0.4.0) is public with ten assets. [CI on main](https://github.com/GoatInAHat/vutoolkit/actions/runs/36317877359) passed on Node 22 and 24. |
+| ClawHub skill | `vutoolkit` v0.4.0 published. Skill installation alone does not install a runtime. |
+| ClawHub native plugin | `openclaw-plugin-vutoolkit` v0.4.0 published; registry scan status is **suspicious**, not cleared. Findings include command execution, dependency dynamic-code paths, credential/network handling, and the professor lookup's client authorization header. |
+| npm | Package lookup returns 404; [release job](https://github.com/GoatInAHat/vutoolkit/actions/runs/36317813643) passed validation/packaging but failed the first npm publication with E404. Trusted publishing still requires the authenticated bootstrap described in [RELEASING.md](RELEASING.md). |
+| Installed hosts | Both requested live v0.4.0 installations are not yet verified. A built or linked package and a separate CLI runtime inspection are not proof of the running gateway's tool catalog. |
+
+The native plugin's bundled dependencies permit installation without a separate npm core package. This does not remove the ClawHub review requirement or establish live authentication on another account. No published version was overwritten to change package contents.

@@ -2,6 +2,11 @@
 
 Notable user-facing changes are recorded here. Published versions and artifacts are listed in [GitHub Releases](https://github.com/GoatInAHat/vutoolkit/releases).
 
+## Unreleased
+
+- Reject Graph paths that normalize outside the documented `/v1.0/` API root before obtaining an access token or sending a request.
+- Clarify v0.4.0 registry availability, scan status, and the distinction between installed source and verified live gateway activation.
+
 ## 0.4.0
 
 - Deterministic `setup.run`: reuse browser authentication, automate configured identity/password steps, enroll and vault a toolkit passkey, and return actionable prerequisite errors.

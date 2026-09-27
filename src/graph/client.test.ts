@@ -16,9 +16,37 @@ describe("graphUrl", () => {
     expect(() => graphUrl("//evil.example/x")).toThrow(TypeError);
     expect(() => graphUrl("me")).toThrow(TypeError);
   });
+  it("rejects literal and encoded dot-segment escapes from the v1.0 root", () => {
+    expect(() => graphUrl("/../beta/me")).toThrow(TypeError);
+    expect(() => graphUrl("/%2e%2e/beta/me")).toThrow(TypeError);
+    expect(() => graphUrl("/v1.0/../../beta/me")).toThrow(TypeError);
+  });
 });
 
 describe("graphCall", () => {
+  it.each(["/../beta/me", "/%2e%2e/beta/me"])("rejects escaped path %s before acquiring a token or fetching", async (path) => {
+    const calls: string[] = [];
+    await expect(
+      graphCall(
+        "GET",
+        path,
+        undefined,
+        undefined,
+        async () => {
+          calls.push("token");
+          return "AT1";
+        },
+        {
+          fetchImpl: (async () => {
+            calls.push("fetch");
+            return new Response("{}", { status: 200 });
+          }) as unknown as typeof fetch,
+        },
+      ),
+    ).rejects.toThrow(TypeError);
+    expect(calls).toEqual([]);
+  });
+
   it("returns parsed JSON with the token attached", async () => {
     let seen = "";
     const res = await graphCall(

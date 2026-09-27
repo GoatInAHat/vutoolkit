@@ -21,3 +21,10 @@ The browser extension's user-selected cart controls add or remove cart entries, 
 Do not post credentials or personal student data in a public issue. Use GitHub's private vulnerability reporting option on the repository's **Security** tab when available. If it is unavailable, open an issue requesting a private reporting channel without including exploit details or private data.
 
 Include the affected version, the smallest sanitized reproduction, and the expected impact. Delete secrets from any diagnostic material before sharing it.
+
+
+## Registry scan review
+
+ClawHub flags the v0.4.0 native package as **suspicious**. A manual source review explains several reported patterns: browser discovery and the web launcher use fixed executable/argument arrays; bundled schema validators use dynamic compilation; authentication necessarily reads configured credentials and communicates with the identity provider; professor lookup uses a public-service client header, not a student's Vanderbilt credentials. This explanation does not override the registry's verdict or constitute a comprehensive security audit.
+
+The important intentional privileges remain: `sessions.open` exports usable authentication material and `graph.call` permits real Microsoft account writes. Restrict these operations to trusted clients; the calling host/agent must enforce account-holder authorization. Installing the skill or seeing passing tests does not grant that authorization.
