@@ -92,7 +92,8 @@ export function parseVaultPasskey(raw: string): VaultPasskey {
   ) {
     throw new VaultNotWiredError("vault passkey entry is missing required fields");
   }
-  return { credentialId: v.credentialId, privateKey: v.privateKey, userHandle: v.userHandle, rpId: v.rpId, signCount: v.signCount };
+  return { credentialId: v.credentialId, privateKey: v.privateKey, userHandle: v.userHandle, rpId: v.rpId, signCount: v.signCount,
+    ...(typeof v.isResidentCredential === "boolean" ? { isResidentCredential: v.isResidentCredential } : {}) };
 }
 
 export function defaultSecretsRead(name: string): string {
@@ -104,7 +105,7 @@ export function defaultSecretsRead(name: string): string {
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch (cause) {
-    throw new AuthError("VAULT_SECRET_UNAVAILABLE", `could not read ${name} from the OpenClaw vault; it must exist as an env-kind entry (openclaw secrets store list)`, { retryable: false, cause });
+    throw new AuthError("VAULT_SECRET_UNAVAILABLE", `could not read ${name} from the OpenClaw vault; configure this named entry through the host's credential setup`, { retryable: false, cause });
   }
   if (!value) {
     throw new AuthError("VAULT_SECRET_UNAVAILABLE", `the OpenClaw vault entry ${name} is empty`, { retryable: false });

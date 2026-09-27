@@ -33,7 +33,7 @@ const introspecting = Boolean(process.env.TOOLFACTORY_INTROSPECT);
 
 /** Builds one server instance with every servable operation registered; called once for stdio, once per HTTP request. */
 function createServer(): McpServer {
-  const server = new McpServer({ name: "vutoolkit", version: "0.2.0" });
+  const server = new McpServer({ name: "vutoolkit", version: "0.3.0" });
   for (const op of operations) {
     if (!introspecting && !serves(op, "mcp")) continue;
     server.registerTool(
@@ -142,7 +142,7 @@ function openBrowser(url: string): void {
 }
 
 /** The names this project declares; `/env` writes no other. */
-const SECRETS = ["NPM_TOKEN","CHROME_EXTENSION_ID","CHROME_PUBLISHER_ID","CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL","CHROME_SERVICE_ACCOUNT_PRIVATE_KEY","FIREFOX_EXTENSION_ID","FIREFOX_JWT_ISSUER","FIREFOX_JWT_SECRET","EDGE_PRODUCT_ID","EDGE_CLIENT_ID","EDGE_API_KEY"];
+const SECRETS = ["NPM_TOKEN","CLAWHUB_TOKEN","CHROME_EXTENSION_ID","CHROME_PUBLISHER_ID","CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL","CHROME_SERVICE_ACCOUNT_PRIVATE_KEY","FIREFOX_EXTENSION_ID","FIREFOX_JWT_ISSUER","FIREFOX_JWT_SECRET","EDGE_PRODUCT_ID","EDGE_CLIENT_ID","EDGE_API_KEY"];
 const ENV_LINE = (name: string) => new RegExp(`^\\s*(export\\s+)?${name}\\s*=`);
 
 function envPath(): string {

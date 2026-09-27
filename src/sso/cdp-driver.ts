@@ -34,6 +34,7 @@ export async function withCdpTab<T>(
   cdpUrl: string,
   startUrl: string,
   fn: (tab: CdpTab) => Promise<T>,
+  options: { keepOpen?: boolean } = {},
 ): Promise<T> {
   augmentNoProxy();
   const blank = await fetch(new URL("/json/new?" + startUrl, cdpUrl), {
@@ -103,7 +104,7 @@ export async function withCdpTab<T>(
     failAll("ceremony finished");
     ws.close();
     try {
-      await fetch(new URL("/json/close/" + tab.id, cdpUrl), { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+      if (!options.keepOpen) await fetch(new URL("/json/close/" + tab.id, cdpUrl), { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     } catch { /* tab cleanup best-effort */ }
   }
 }

@@ -137,6 +137,24 @@
             },
             "additionalProperties": {}
           }
+        },
+        "live": {
+          "type": "object",
+          "properties": {
+            "credentials": {
+              "description": "Environment gates for live tests when auth is supplied outside tool config, such as a host vault. Names only, never values.",
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z_][A-Z0-9_]*$"
+              }
+            },
+            "ci": {
+              "description": "Set false for live tests that require a local vault or browser unavailable on hosted CI. The native local live-test tier is still generated.",
+              "type": "boolean"
+            }
+          }
         }
       }
     },
@@ -421,6 +439,13 @@
         "pluginApi": {
           "description": "Plugin API range for compat.pluginApi and the openclaw peer dependency.",
           "type": "string"
+        },
+        "skills": {
+          "description": "Skill directories under `.agents/skills/` that the OpenClaw plugin ships; OpenClaw loads them through the manifest's `skills` roots.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "dependencies": {
           "type": "object",

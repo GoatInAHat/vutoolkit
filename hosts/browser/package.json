@@ -2,7 +2,7 @@
   "name": "vutoolkit-browser",
   "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.7",
     "@webext-core/fake-browser": "^2.0.1",
     "@wxt-dev/module-react": "^1.2.2",
     "playwright": "^1.62.1",

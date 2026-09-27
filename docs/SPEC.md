@@ -55,3 +55,16 @@ Build order:
 4. Setup flow: from user providing everything except the passkey to issuing the passkey and saving it securely — as user-friendly, automatic, and reliable as possible
 
 Build using toolfactory (github.com/GoatInAHat/toolfactory); improve toolfactory where needed. Serve useful UI/widgets from within the OpenClaw Control UI (coordinate toolfactory updates with the toolfactory session; GSD integration updates with the session that manages it).
+
+---
+
+## Implementation status — v0.3.0 release candidate
+
+Added 2026-09-27; the original brief above is unchanged. See [ACCEPTANCE.md](ACCEPTANCE.md) for the feature-by-feature evidence and limits.
+
+- **Implemented and read-only live-verified:** Vanderbilt/Microsoft session health and export, Graph account identity, YES academic record, official term/cumulative GPA verification and what-if calculation, official audit/planner data, requirement alternatives, catalog/section data, a live OR prerequisite expression, scheduling over live sections, and public professor lookup. The current live suite passes **13 tests** using the configured account's host vault.
+- **Implemented with algorithm/fixture verification:** deterministic AND/OR prerequisite ranking, cycle/unknown/truncation handling, schedule preferences and cart diffs, the D3 interface, YES extension controls, and passkey enrollment state handling. Source-unit acceptance passes **137 tests**; browser execution and surface checks are recorded separately.
+- **Not yet live-verified:** issuance and subsequent use of a newly enrolled toolkit passkey; actual YES cart mutations; every browser and every new account. These must not be described as completed live acceptance.
+- **Partial versus the broad planning goal:** the graph preserves official audit requirements and lazily fetches their alternatives; known prerequisite paths can be ranked. It does not yet prove all complete degree paths globally optimal, resolve arbitrary prerequisite prose, or automatically derive preference weights from the student's email/research history. Unknowns and search truncation remain explicit.
+- **Generated, not proof of delivery:** the 25-operation, eight-surface Tool Factory coverage map describes exposure. It does not prove npm/ClawHub publication, a browser-store listing, a running host update, or successful authentication on a second student's account.
+- **Deliberately excluded:** automatic enrollment in classes, changes to official degree/planner records, unsupported password-only services, and account-security changes during read-only testing. The original request explicitly substitutes cart selection for VandyScheduler's enrollment action.

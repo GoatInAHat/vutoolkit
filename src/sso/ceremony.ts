@@ -25,6 +25,7 @@ export interface VaultPasskey {
   userHandle: string;
   rpId: string;
   signCount: number;
+  isResidentCredential?: boolean;
 }
 
 export interface CeremonyOptions {
@@ -123,7 +124,7 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
       authenticatorId: au.authenticatorId,
       credential: {
         credentialId: toCdpB64(opts.passkey.credentialId),
-        isResidentCredential: false,
+        isResidentCredential: opts.passkey.isResidentCredential ?? false,
         rpId: opts.passkey.rpId,
         privateKey: toCdpB64(opts.passkey.privateKey),
         userHandle: toCdpB64(opts.passkey.userHandle),

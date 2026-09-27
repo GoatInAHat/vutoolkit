@@ -1,6 +1,6 @@
 # vutoolkit
 
-One paragraph: what an agent working in this repo should know before touching `src/ops.ts` — the tool's domain, and anything not obvious from the layout below.
+vutoolkit gives an authorized student's AI agents access to Vanderbilt OneVU, YES academic records, GPA planning, and Microsoft Graph. `src/ops.ts` defines the public operations; authentication, parsing, and calculation logic lives in the adjacent domain modules. Resolve credentials through the host vault, keep each person's sessions isolated, and use synthetic or redacted fixtures. Academic tooling is read-only; Microsoft Graph writes require the account holder's authorization. Validate GPA results against the official live transcript before trusting projections, and distinguish implemented features from generated surfaces and unfinished work in `docs/SPEC.md`.
 
 <!-- tf:agents -->
 ## Commands
@@ -10,7 +10,7 @@ One paragraph: what an agent working in this repo should know before touching `s
 - `npx toolfactory check` — the drift gate: fails when a generated file or the operation snapshot is stale.
 - `npx toolfactory validate` — runs every selected surface's upstream validator.
 - `npx toolfactory coverage` — operation × surface verdicts.
-- Tests: `npm test`.
+- Tests: `npm test`; live tests against the real service (needs `.env`, copied from `.env.example`): `npm run test:live`.
 - Package manager: npm.
 
 ## Layout

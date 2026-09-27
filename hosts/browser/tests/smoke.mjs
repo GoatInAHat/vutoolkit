@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const extension = fileURLToPath(new URL("../.output/chrome-mv3", import.meta.url));
-const CASE = {"name":"gpa.verify","arguments":{}};
+const CASE = {"name":"courses.detail","arguments":{}};
 const TOKEN = "smoke-token";
 const MARKER = "vutoolkit-browser-smoke";
 

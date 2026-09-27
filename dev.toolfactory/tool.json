@@ -5,6 +5,7 @@
   "binding": "typescript",
   "surfaces": [
     "skill",
+    "clawhub",
     "mcp",
     "cli",
     "npm",
@@ -16,6 +17,10 @@
     "runtime": "package"
   },
   "tests": {
-    "examples": {}
+    "examples": {},
+    "live": {
+      "credentials": ["VUTOOLKIT_LIVE"],
+      "ci": false
+    }
   }
 }

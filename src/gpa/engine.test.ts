@@ -5,6 +5,7 @@ import {
   cumulative,
   matchesPostedGpa,
   whatIf,
+  verifyTranscript,
   type Transcript,
 } from "./engine.js";
 import { SYNTHETIC_TRANSCRIPT as FIXTURE } from "./fixtures.js";
@@ -65,6 +66,35 @@ describe("gpa engine (golden anchor)", () => {
 
   it("exposes the committed fixture through the verify helper", () => {
     expect(cumulative(FIXTURE)).toBeCloseTo(3.175, 9);
+  });
+
+  it("checks cumulative independently and refuses a mismatch even when every term matches", () => {
+    const valid = verifyTranscript({ ...FIXTURE, postedCumulativeGpa: 3.175 });
+    expect(valid.ok).toBe(true);
+    expect(valid.cumulativeCheck.match).toBe(true);
+    const invalid = verifyTranscript({ ...FIXTURE, postedCumulativeGpa: 3.176 });
+    expect(invalid.rows.every((row) => row.match)).toBe(true);
+    expect(invalid.cumulativeCheck.match).toBe(false);
+    expect(invalid.ok).toBe(false);
+  });
+
+  it("does not claim cumulative verification when the posted anchor is missing", () => {
+    const result = verifyTranscript(FIXTURE);
+    expect(result.cumulativeCheck.match).toBeNull();
+    expect(result.note).toContain("cumulative GPA is unverified");
+  });
+
+  it("honors institution-excluded repeat/transfer hours without excluding in-progress projections", () => {
+    const record: Transcript = { terms: [{ term: "X", courses: [
+      { course: "REPEAT", credits: 3, gpaCredits: 0, grade: "F" },
+      { course: "TRANSFER", credits: 3, gpaCredits: 0, grade: "T" },
+      { course: "POSTED", credits: 3, grade: "B" },
+      { course: "CURRENT", credits: 3 },
+    ] }] };
+    expect(whatIf(record, []).cumulativeGpaCredits).toBe(3);
+    const projection = whatIf(record, [{ course: "CURRENT", grade: "A" }]);
+    expect(projection.cumulativeGpaCredits).toBe(6);
+    expect(projection.cumulative).toBe(3.5);
   });
 });
 

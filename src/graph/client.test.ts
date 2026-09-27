@@ -30,11 +30,11 @@ describe("graphCall", () => {
       {
         fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
           seen = bearer(init);
-          return new Response(JSON.stringify({ displayName: "Vernon, Bennett G" }), { status: 200 });
+          return new Response(JSON.stringify({ displayName: "Example, Student" }), { status: 200 });
         }) as unknown as typeof fetch,
       },
     );
-    expect(res).toEqual({ status: 200, data: { displayName: "Vernon, Bennett G" } });
+    expect(res).toEqual({ status: 200, data: { displayName: "Example, Student" } });
     expect(seen).toBe("Bearer AT1");
   });
 

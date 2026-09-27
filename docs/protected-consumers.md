@@ -1,4 +1,6 @@
-# Protected passkey consumer: source-only checkpoint
+# Protected passkey consumer: historical design checkpoint
+
+This document records an isolated protected-secret adapter review from September 13, 2026. It is not the current runtime status: see [ACCEPTANCE.md](ACCEPTANCE.md) for current authentication and session verification. The ordinary vault-backed runtime and the proposed protected-secret adapter are separate integration paths.
 
 ## Supported native boundary
 
@@ -12,7 +14,7 @@ Inspected the installed OpenClaw docs and SDK source on 2026-09-13; no credentia
 | [Store and egress](https://docs.openclaw.ai/gateway/secrets/secret-store-and-egress) | Protected entries are not plaintext subprocess env. Egress substitution handles HTTPS requests, not local signing or CDP WebSocket message frames. |
 | [Credential surface](https://docs.openclaw.ai/reference/secretref-credential-surface) | Read-only SecretRef resolution does not cover runtime-minted/rotating session artifacts. |
 
-Installed evidence root: `/home/openclaw/.openclaw/tools/node-v24.19.0/lib/node_modules/openclaw`.
+Installed evidence root: the OpenClaw package root on the development host.
 Reviewed `dist/plugin-sdk/secret-input-runtime.{js,d.ts}`, `secret-ref-readonly.d.ts`,
 the exported configured-resolution implementation, and the `OpenClawPluginApi` declaration
 (`pluginConfig`, native runtime helpers). No private store/SQLite helper is imported by VU.
@@ -72,8 +74,9 @@ generation/adoption, not hand-edit its generated projections.
 4. **Verified login flow and authenticated health check:** still unresolved, independent of
    storage. Existing OneVU evidence does not rule out other passwordless paths.
 
-`sessions.open` and `sessions.refresh` remain gated. No claim is made that the existing ceremony
-scaffold proves authentication merely by returning cookies.
+At the time of this design checkpoint, `sessions.open` and `sessions.refresh` had not been
+verified through this proposed protected-secret adapter. Returning cookies alone is not proof
+of authentication; current runtime acceptance is recorded separately in [ACCEPTANCE.md](ACCEPTANCE.md).
 
 ## Offline verification
 

@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser } from "wxt/testing/fake-browser";
 import { route } from "../entrypoints/background";
 
-const OPERATION = "gpa.verify";
+const OPERATION = "courses.detail";
 const ENVELOPE = JSON.stringify({
   jsonrpc: "2.0",
   id: 1,

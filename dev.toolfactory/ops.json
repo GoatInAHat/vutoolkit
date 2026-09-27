@@ -1,14 +1,466 @@
 {
   "tools": [
     {
+      "name": "courses.detail",
+      "description": "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "offerNumber": {
+            "default": 1,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "offerNumber": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prerequisiteText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prerequisites": {},
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "offerNumber",
+          "text",
+          "description",
+          "prerequisiteText",
+          "prerequisites",
+          "source"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "courses.search",
+      "description": "Search the live YES catalog for course IDs, titles, schools and typical offerings. Vanderbilt's keyword search can return broad matches; select by returned course code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "string",
+            "minLength": 3
+          }
+        },
+        "required": [
+          "keywords"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "source": {
+            "type": "string",
+            "const": "live"
+          }
+        },
+        "required": [
+          "courses",
+          "source"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "courses.sections",
+      "description": "Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "string",
+            "minLength": 3
+          },
+          "termCode": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        },
+        "required": [
+          "keywords"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "source": {
+            "type": "string",
+            "const": "live"
+          }
+        },
+        "required": [
+          "sections",
+          "source"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "degree.audit",
+      "description": "Read Vanderbilt's official degree-audit requirement groups, status, counters and existing planner courses. No audit refresh, enrollment or planner mutation; report timestamps are preserved.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "audits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "plannerCourses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "source": {
+            "type": "string",
+            "const": "live"
+          },
+          "fetchedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "audits",
+          "plannerCourses",
+          "source",
+          "fetchedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "degree.graph",
+      "description": "Build a directed graph from the authenticated student's official YES audit, including all current requirement groups/lines, satisfying courses and optional planner courses. Official course alternatives load separately via degree.options; this does not invent degree rules.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {}
+          },
+          "edges": {
+            "type": "array",
+            "items": {}
+          },
+          "source": {
+            "type": "string",
+            "const": "live"
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "alternativesLoaded": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "source",
+          "fetchedAt",
+          "alternativesLoaded",
+          "note"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
+      "name": "degree.options",
+      "description": "Read all official course satisfiers for one current degree-audit requirement line. Report and entry IDs come from degree.audit/degree.graph; the student identity is resolved internally from the authenticated audit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reportSequence": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "entrySequence": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "reportSequence",
+          "entrySequence"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "source": {
+            "type": "string",
+            "const": "live"
+          }
+        },
+        "required": [
+          "courses",
+          "source"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net",
+            "secret"
+          ]
+        }
+      }
+    },
+    {
       "name": "gpa.verify",
-      "description": "The golden anchor: recompute per-term GPAs from posted marks and compare against the numbers Vanderbilt posted. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to lock the real YES mapping.",
+      "description": "The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "transcript": {
             "type": "object",
             "properties": {
+              "postedCumulativeGpa": {
+                "type": "number"
+              },
               "terms": {
                 "type": "array",
                 "items": {
@@ -30,6 +482,10 @@
                           },
                           "credits": {
                             "type": "number"
+                          },
+                          "gpaCredits": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "grade": {
                             "type": "string"
@@ -98,6 +554,35 @@
               "null"
             ]
           },
+          "cumulativeCheck": {
+            "type": "object",
+            "properties": {
+              "posted": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "recomputed": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "match": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "posted",
+              "recomputed",
+              "match"
+            ],
+            "additionalProperties": false
+          },
           "note": {
             "type": "string"
           }
@@ -106,6 +591,7 @@
           "ok",
           "rows",
           "cumulative",
+          "cumulativeCheck",
           "note"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -129,6 +615,9 @@
           "transcript": {
             "type": "object",
             "properties": {
+              "postedCumulativeGpa": {
+                "type": "number"
+              },
               "terms": {
                 "type": "array",
                 "items": {
@@ -150,6 +639,10 @@
                           },
                           "credits": {
                             "type": "number"
+                          },
+                          "gpaCredits": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "grade": {
                             "type": "string"
@@ -332,6 +825,289 @@
       }
     },
     {
+      "name": "planner.graph",
+      "description": "Deterministic AND/OR prerequisite graph and ranked alternative paths for supplied course metadata. Shared prerequisites count once. Completed/planned courses and weighted goals are supported. Unknown prose, missing metadata, cycles and search truncation remain explicit; degree.audit is the official degree authority.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "course": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "prerequisites": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "typicallyOffered": {
+                  "type": "string"
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rating": {
+                  "type": "object",
+                  "properties": {
+                    "average": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 5
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "average",
+                    "count",
+                    "url"
+                  ]
+                },
+                "sourceUrl": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "required": [
+                "course"
+              ]
+            }
+          },
+          "completed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "planned": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preferences": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "maxAlternatives": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "courses"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "course"
+                  },
+                  "course": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "course"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "any"
+                    ]
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "items"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unknown"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {}
+          },
+          "edges": {
+            "type": "array",
+            "items": {}
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ranking": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "alternatives",
+          "truncated",
+          "warnings",
+          "ranking"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "professors.search",
+      "description": "Look up public Vanderbilt Rate My Professors candidates and ratings. Preserves namesake ambiguity; no Vanderbilt credentials leave the toolkit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "professors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "fetchedAt": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "professors",
+          "source",
+          "fetchedAt",
+          "note"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "net"
+          ]
+        }
+      }
+    },
+    {
       "name": "record.fetch",
       "description": "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
       "inputSchema": {
@@ -350,6 +1126,9 @@
           "transcript": {
             "type": "object",
             "properties": {
+              "postedCumulativeGpa": {
+                "type": "number"
+              },
               "terms": {
                 "type": "array",
                 "items": {
@@ -371,6 +1150,10 @@
                           },
                           "credits": {
                             "type": "number"
+                          },
+                          "gpaCredits": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "grade": {
                             "type": "string"
@@ -418,6 +1201,494 @@
             "net",
             "secret"
           ]
+        }
+      }
+    },
+    {
+      "name": "scheduler.cartPlan",
+      "description": "Pure cart-only add/remove diff for a selected schedule. Unselected or unrelated courses are retained by default. Does not execute any requests or alter enrollment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "currentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "chosen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "keepExcluded": {
+            "default": true,
+            "type": "boolean"
+          },
+          "preserveSectionIds": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "currentIds",
+          "chosen",
+          "candidates"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "add": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unchanged": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "add",
+          "remove",
+          "unchanged"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
+        }
+      }
+    },
+    {
+      "name": "scheduler.solve",
+      "description": "Enumerate conflict-free section combinations; include labs, multiple meetings, course exclusions and preferred break times. Deterministic preference ranking and explicit truncation/TBA uncertainty. Returns choices, never enrollment actions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "excludedCourses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludedSectionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockedTimes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[MTWRFSU]$"
+                  }
+                },
+                "start": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1439
+                },
+                "end": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 1440
+                },
+                "location": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "days",
+                "start",
+                "end"
+              ]
+            }
+          },
+          "hidePreferenceConflicts": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxSearchNodes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "sections"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "schedules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "found": {
+            "type": "number"
+          },
+          "searched": {
+            "type": "number"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "searchComplete": {
+            "type": "boolean"
+          },
+          "incompatibleGroups": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "excludedCourses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludedSectionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "schedules",
+          "found",
+          "searched",
+          "truncated",
+          "searchComplete",
+          "incompatibleGroups",
+          "excludedCourses",
+          "excludedSectionIds",
+          "warnings"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": []
         }
       }
     },
@@ -740,6 +2011,253 @@
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "net"
+          ]
+        }
+      }
+    },
+    {
+      "name": "setup.enroll",
+      "description": "Explicitly issue a toolkit passkey through OneVU's actual security-method enrollment and store it directly in the host vault. Requires an authenticated managed browser and confirm=true. Refuses to replace an existing toolkit passkey; never revokes account credentials. This changes account security; run only after the account owner's explicit request. Returns metadata, never key material.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "timeoutSeconds": {
+            "default": 120,
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 300
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "enrolled",
+              "stored-awaiting-confirmation"
+            ]
+          },
+          "secretName": {
+            "type": "string"
+          },
+          "serverConfirmed": {
+            "type": "boolean"
+          },
+          "existingPasskeysRevoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "secretName",
+          "serverConfirmed",
+          "existingPasskeysRevoked"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "net",
+            "shell"
+          ]
+        }
+      }
+    },
+    {
+      "name": "setup.identity",
+      "description": "Configure the account's non-secret Vanderbilt email and/or VUnetID in the native host vault. A VUnetID alone supplies its Vanderbilt sign-in address. Never accepts passwords or passkeys. Refuses to change an identity while an existing passkey is bound to another account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "vunetId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "identityConfigured": {
+            "type": "boolean"
+          },
+          "emailConfigured": {
+            "type": "boolean"
+          },
+          "vunetIdConfigured": {
+            "type": "boolean"
+          },
+          "emailDerivedFromVunetId": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identityConfigured",
+          "emailConfigured",
+          "vunetIdConfigured",
+          "emailDerivedFromVunetId"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "shell"
+          ]
+        }
+      }
+    },
+    {
+      "name": "setup.prepare",
+      "description": "Prepare real OneVU self-service setup in a dedicated managed-browser tab. Inspect the security-method page and use an existing vaulted passkey for sign-in when available. Does not issue, replace or revoke any passkey. First-time users complete sign-in in the managed browser, never in chat.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keepTab": {
+            "default": true,
+            "description": "Keep the setup tab open for the user's first sign-in; false is for read-only diagnostics.",
+            "type": "boolean"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "sign-in-required"
+            ]
+          },
+          "settingsUrl": {
+            "type": "string"
+          },
+          "browserTabId": {
+            "type": "string"
+          },
+          "existingPasskeyPreserved": {
+            "type": "boolean"
+          },
+          "enrollmentAvailable": {
+            "type": "boolean"
+          },
+          "nextStep": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "settingsUrl",
+          "existingPasskeyPreserved",
+          "enrollmentAvailable",
+          "nextStep"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.toolfactory": {
+          "requires": [
+            "secret",
+            "net"
+          ]
+        }
+      }
+    },
+    {
+      "name": "setup.status",
+      "description": "Check Vanderbilt account setup without returning credentials: configured identity, passkey validity, managed-browser availability and the next step. Existing passkeys are never replaced.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "identityConfigured": {
+            "type": "boolean"
+          },
+          "emailConfigured": {
+            "type": "boolean"
+          },
+          "passkeyConfigured": {
+            "type": "boolean"
+          },
+          "passkeyValid": {
+            "type": "boolean"
+          },
+          "browserAvailable": {
+            "type": "boolean"
+          },
+          "readyForAuth": {
+            "type": "boolean"
+          },
+          "authenticated": {
+            "type": "boolean",
+            "const": false
+          },
+          "settingsUrl": {
+            "type": "string"
+          },
+          "nextStep": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "identityConfigured",
+          "emailConfigured",
+          "passkeyConfigured",
+          "passkeyValid",
+          "browserAvailable",
+          "readyForAuth",
+          "authenticated",
+          "settingsUrl",
+          "nextStep"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
       },
       "_meta": {
         "dev.toolfactory": {

@@ -153,7 +153,11 @@ if hook.is_file():
 PY
 
 # Project setup: the dependencies this project's toolchain needs.
-npm install --no-audit --no-fund
+if [ -f package-lock.json ]; then
+    npm ci --no-audit --no-fund
+else
+    npm install --no-audit --no-fund
+fi
 # /tf:setup
 
 # Anything else this project needs at setup time (codegen, migrations) goes

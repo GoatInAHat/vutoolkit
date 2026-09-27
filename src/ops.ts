@@ -8,9 +8,10 @@
  * CDP ceremony (OneVU passkey or Microsoft Entra carry).
  */
 import { readFileSync } from "node:fs";
+import { yesOperations } from "./yes/operations.js";
 import { join } from "node:path";
 import { z } from "zod";
-import { cumulative, matchesPostedGpa, round3, whatIf, type Transcript } from "./gpa/engine.js";
+import { verifyTranscript, whatIf } from "./gpa/engine.js";
 import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
@@ -19,8 +20,10 @@ import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
 import { graphCall } from "./graph/client.js";
 import { ensureGraphToken, GraphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
+import { setupOperations } from "./sso/setup-operations.js";
 
 const transcriptSchema = z.object({
+  postedCumulativeGpa: z.number().optional(),
   terms: z.array(
     z.object({
       term: z.string(),
@@ -29,6 +32,7 @@ const transcriptSchema = z.object({
         z.object({
           course: z.string(),
           credits: z.number(),
+          gpaCredits: z.number().nonnegative().optional(),
           grade: z.string().optional(),
         }),
       ),
@@ -54,6 +58,8 @@ const bestEffortLoginHint = (): string | undefined => {
 };
 
 export const operations = [
+  ...setupOperations,
+  ...yesOperations,
   operation({
     name: "sessions.list",
     description:
@@ -265,7 +271,7 @@ export const operations = [
   operation({
     name: "gpa.verify",
     description:
-      "The golden anchor: recompute per-term GPAs from posted marks and compare against the numbers Vanderbilt posted. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to lock the real YES mapping.",
+      "The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.",
     input: z.object({ transcript: transcriptSchema.optional() }),
     output: z.object({
       ok: z.boolean(),
@@ -278,30 +284,10 @@ export const operations = [
         }),
       ),
       cumulative: z.number().nullable(),
+      cumulativeCheck: z.object({ posted: z.number().nullable(), recomputed: z.number().nullable(), match: z.boolean().nullable() }),
       note: z.string(),
     }),
     annotations: { readOnlyHint: true },
-    handler: async ({ transcript }) => {
-      const t: Transcript = transcript ?? SYNTHETIC_TRANSCRIPT;
-      const rows: { term: string; posted: number; recomputed: number | null; match: boolean }[] = [];
-      for (const term of t.terms) {
-        if (term.postedGpa === undefined) continue;
-        // Compare on the RAW gpa: truncating the rounded value would floor 2.486 -> 2.486 and
-        // never reproduce YES's 2.485 display of 2.48571...
-        const raw = whatIf({ terms: [term] }, []).terms[0]?.gpa ?? null;
-        const recomputed = round3(raw);
-        const match = matchesPostedGpa(raw, term.postedGpa);
-        rows.push({ term: term.term, posted: term.postedGpa, recomputed, match });
-      }
-      const ok = rows.length > 0 && rows.every((r) => r.match);
-      return {
-        ok,
-        rows,
-        cumulative: round3(cumulative(t)),
-        note: ok
-          ? "all posted GPAs reproduced — the engine's scale semantics hold"
-          : "MISMATCH: do not trust what-if output until the scale mapping is corrected",
-      };
-    },
+    handler: async ({ transcript }) => verifyTranscript(transcript ?? SYNTHETIC_TRANSCRIPT),
   }),
 ];

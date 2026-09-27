@@ -61,3 +61,6 @@ web/src/ops.json
 /IDENTITY.md
 /SOUL.md
 /USER.md
+
+# local npm auth (env-var placeholder; never commit real tokens)
+.npmrc

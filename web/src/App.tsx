@@ -273,7 +273,7 @@ function SecretsPanel() {
         <CardTitle>Secrets</CardTitle>
         <CardDescription>
           Written to this checkout's gitignored <code>.env</code>, which the live tests and
-          <code> toolfactory bootstrap-repo</code> read. Run <code>toolfactory secrets check</code>{" "}
+          <code> toolfactory bootstrap-repo</code> read. Run <code>toolfactory secrets-usage check</code>{" "}
           to ask each registry whether it accepts them.
         </CardDescription>
       </CardHeader>
@@ -387,8 +387,19 @@ export function OperationsPage() {
 }
 // /tf:app
 
+import { PlannerPage } from "./Planner"
+import { SetupPanel } from "./SetupPanel"
+
+const plannerRun = async (name: string, args: Record<string, unknown>) => {
+  const result = await call(DEFAULT_ENDPOINT, mcpRequest({ name, inputSchema: {} }, args)) as Record<string, unknown>
+  if (result?.isError) throw new Error(JSON.stringify(result.content))
+  return result
+}
+
 export const pages: { id: string; title: string; element: ReactNode }[] = [
   { id: "operations", title: "Operations", element: <OperationsPage /> },
+  { id: "planner", title: "Degree planner", element: <PlannerPage run={plannerRun} /> },
+  { id: "setup", title: "Connect Vanderbilt", element: <SetupPanel call={plannerRun} /> },
   // Add your own pages here — e.g. a d3 graph in src/pages/planner.tsx, imported above:
   //   import { PlannerPage } from "./pages/planner"
   //   { id: "planner", title: "Degree planner", element: <PlannerPage /> },

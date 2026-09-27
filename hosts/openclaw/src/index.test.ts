@@ -6,7 +6,7 @@ import entry from "./index.js";
 
 describe("vutoolkit", () => {
   it("declares tool metadata", () => {
-    expect(getToolPluginMetadata(entry)?.tools.map((tool) => tool.name)).toEqual(["gpa.verify","grades.whatif","graph.call","record.fetch","sessions.ensure","sessions.forget","sessions.ingest","sessions.list","sessions.open","sessions.refresh","web"]);
+    expect(getToolPluginMetadata(entry)?.tools.map((tool) => tool.name)).toEqual(["vutoolkit_courses_detail","vutoolkit_courses_search","vutoolkit_courses_sections","vutoolkit_degree_audit","vutoolkit_degree_graph","vutoolkit_degree_options","vutoolkit_gpa_verify","vutoolkit_grades_whatif","vutoolkit_graph_call","vutoolkit_planner_graph","vutoolkit_professors_search","vutoolkit_record_fetch","vutoolkit_scheduler_cartPlan","vutoolkit_scheduler_solve","vutoolkit_sessions_ensure","vutoolkit_sessions_forget","vutoolkit_sessions_ingest","vutoolkit_sessions_list","vutoolkit_sessions_open","vutoolkit_sessions_refresh","vutoolkit_setup_enroll","vutoolkit_setup_identity","vutoolkit_setup_prepare","vutoolkit_setup_status","vutoolkit_web"]);
   });
 
   it("serves the web app as a Control UI tab", () => {

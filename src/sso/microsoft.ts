@@ -190,7 +190,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
       }
       if (state.kind === "password") {
         throw new MicrosoftNotConfiguredError(
-          "microsoft mint: Microsoft asked for a password, which a OneVU-federated account never does — the tenant's federation changed and needs Bennett's decision",
+          "microsoft mint: Microsoft asked for a password, which a OneVU-federated account never does — the tenant's federation changed and needs the account holder's review",
         );
       }
       if (state.kind === "okta" && oktaSightings >= 2) {

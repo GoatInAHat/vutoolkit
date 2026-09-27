@@ -33,8 +33,14 @@ export class YesWriteBlockedError extends Error {
 
 export function classify(url: string, method: string): WriteClass {
   const verb = method.toUpperCase();
-  if (verb === "GET" || verb === "HEAD") return "read";
-  if (ENROLLMENT_PATTERNS.some((p) => p.test(url))) return "enrollment";
+  let decoded = url;
+  for (let n = 0; n < 2; n++) {
+    try { const next = decodeURIComponent(decoded); if (next === decoded) break; decoded = next; } catch { return "blocked"; }
+  }
+  if (ENROLLMENT_PATTERNS.some((p) => p.test(decoded))) return "enrollment";
+  // YES uses GET for cart/planner mutations too. A method alone cannot establish read-only.
+  const mutationRoute = /(?:StudentClassExecute!(?:add|remove)|PlannedCourseJson!save|PlannedCourse!remove)\.action/i.test(decoded);
+  if ((verb === "GET" || verb === "HEAD") && !mutationRoute) return "read";
   const allowed = CART_WRITE_ALLOWLIST.some((e) => e.method === verb && e.pattern.test(url));
   return allowed ? "cart-write" : "blocked";
 }

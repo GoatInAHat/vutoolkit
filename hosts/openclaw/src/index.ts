@@ -31,14 +31,144 @@ const entry = defineToolPlugin({
   },
   tools: (tool) => [
     tool({
-      name: "gpa.verify",
-      description: "The golden anchor: recompute per-term GPAs from posted marks and compare against the numbers Vanderbilt posted. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to lock the real YES mapping.",
+      name: "vutoolkit_courses_detail",
+      description: "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          },
+          "offerNumber": {
+            "default": 1,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("courses.detail").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_courses_search",
+      description: "Search the live YES catalog for course IDs, titles, schools and typical offerings. Vanderbilt's keyword search can return broad matches; select by returned course code.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "string",
+            "minLength": 3
+          }
+        },
+        "required": [
+          "keywords"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("courses.search").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_courses_sections",
+      description: "Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "string",
+            "minLength": 3
+          },
+          "termCode": {
+            "type": "string",
+            "pattern": "^\\d+$"
+          }
+        },
+        "required": [
+          "keywords"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("courses.sections").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_degree_audit",
+      description: "Read Vanderbilt's official degree-audit requirement groups, status, counters and existing planner courses. No audit refresh, enrollment or planner mutation; report timestamps are preserved.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {}
+      }),
+      execute: async (params, config) =>
+        operation("degree.audit").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_degree_graph",
+      description: "Build a directed graph from the authenticated student's official YES audit, including all current requirement groups/lines, satisfying courses and optional planner courses. Official course alternatives load separately via degree.options; this does not invent degree rules.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {}
+      }),
+      execute: async (params, config) =>
+        operation("degree.graph").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_degree_options",
+      description: "Read all official course satisfiers for one current degree-audit requirement line. Report and entry IDs come from degree.audit/degree.graph; the student identity is resolved internally from the authenticated audit.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "reportSequence": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "entrySequence": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "reportSequence",
+          "entrySequence"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("degree.options").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_gpa_verify",
+      description: "The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
           "transcript": {
             "type": "object",
             "properties": {
+              "postedCumulativeGpa": {
+                "type": "number"
+              },
               "terms": {
                 "type": "array",
                 "items": {
@@ -60,6 +190,10 @@ const entry = defineToolPlugin({
                           },
                           "credits": {
                             "type": "number"
+                          },
+                          "gpaCredits": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "grade": {
                             "type": "string"
@@ -92,7 +226,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "grades.whatif",
+      name: "vutoolkit_grades_whatif",
       description: "Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -100,6 +234,9 @@ const entry = defineToolPlugin({
           "transcript": {
             "type": "object",
             "properties": {
+              "postedCumulativeGpa": {
+                "type": "number"
+              },
               "terms": {
                 "type": "array",
                 "items": {
@@ -121,6 +258,10 @@ const entry = defineToolPlugin({
                           },
                           "credits": {
                             "type": "number"
+                          },
+                          "gpaCredits": {
+                            "type": "number",
+                            "minimum": 0
                           },
                           "grade": {
                             "type": "string"
@@ -175,7 +316,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "graph.call",
+      name: "vutoolkit_graph_call",
       description: "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -217,7 +358,198 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "record.fetch",
+      name: "vutoolkit_planner_graph",
+      description: "Deterministic AND/OR prerequisite graph and ranked alternative paths for supplied course metadata. Shared prerequisites count once. Completed/planned courses and weighted goals are supported. Unknown prose, missing metadata, cycles and search truncation remain explicit; degree.audit is the official degree authority.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "course": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "prerequisites": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "typicallyOffered": {
+                  "type": "string"
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rating": {
+                  "type": "object",
+                  "properties": {
+                    "average": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 5
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "average",
+                    "count",
+                    "url"
+                  ]
+                },
+                "sourceUrl": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "required": [
+                "course"
+              ]
+            }
+          },
+          "completed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "planned": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "preferences": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "maxAlternatives": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "courses"
+        ],
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "course"
+                  },
+                  "course": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "course"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "any"
+                    ]
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "items"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "unknown"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text"
+                ]
+              }
+            ]
+          }
+        }
+      }),
+      execute: async (params, config) =>
+        operation("planner.graph").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_professors_search",
+      description: "Look up public Vanderbilt Rate My Professors candidates and ratings. Preserves namesake ambiguity; no Vanderbilt credentials leave the toolkit.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("professors.search").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_record_fetch",
       description: "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -235,7 +567,388 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.ensure",
+      name: "vutoolkit_scheduler_cartPlan",
+      description: "Pure cart-only add/remove diff for a selected schedule. Unselected or unrelated courses are retained by default. Does not execute any requests or alter enrollment.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "currentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "chosen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "keepExcluded": {
+            "default": true,
+            "type": "boolean"
+          },
+          "preserveSectionIds": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "currentIds",
+          "chosen",
+          "candidates"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("scheduler.cartPlan").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_scheduler_solve",
+      description: "Enumerate conflict-free section combinations; include labs, multiple meetings, course exclusions and preferred break times. Deterministic preference ranking and explicit truncation/TBA uncertainty. Returns choices, never enrollment actions.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "course": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "section": {
+                  "type": "string"
+                },
+                "component": {
+                  "type": "string"
+                },
+                "termCode": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "credits": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "instructors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "meetings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "days": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[MTWRFSU]$"
+                        }
+                      },
+                      "start": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "end": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 1440
+                      },
+                      "location": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "days",
+                      "start",
+                      "end"
+                    ]
+                  }
+                },
+                "timeUnknown": {
+                  "type": "boolean"
+                },
+                "availability": {
+                  "type": "string"
+                },
+                "compatibleWith": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "course",
+                "section",
+                "component",
+                "meetings"
+              ]
+            }
+          },
+          "excludedCourses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludedSectionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blockedTimes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[MTWRFSU]$"
+                  }
+                },
+                "start": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1439
+                },
+                "end": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 1440
+                },
+                "location": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "days",
+                "start",
+                "end"
+              ]
+            }
+          },
+          "hidePreferenceConflicts": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxSearchNodes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "sections"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("scheduler.solve").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_sessions_ensure",
       description: "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -259,7 +972,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.forget",
+      name: "vutoolkit_sessions_forget",
       description: "Drop a cached session: removes its row (metadata and values) from the session vault.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -283,7 +996,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.ingest",
+      name: "vutoolkit_sessions_ingest",
       description: "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -312,7 +1025,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.list",
+      name: "vutoolkit_sessions_list",
       description: "Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -325,7 +1038,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.open",
+      name: "vutoolkit_sessions_open",
       description: "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -358,7 +1071,7 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "sessions.refresh",
+      name: "vutoolkit_sessions_refresh",
       description: "Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy.",
       parameters: Type.Unsafe({
         "type": "object",
@@ -380,7 +1093,89 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
-      name: "web",
+      name: "vutoolkit_setup_enroll",
+      description: "Explicitly issue a toolkit passkey through OneVU's actual security-method enrollment and store it directly in the host vault. Requires an authenticated managed browser and confirm=true. Refuses to replace an existing toolkit passkey; never revokes account credentials. This changes account security; run only after the account owner's explicit request. Returns metadata, never key material.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "timeoutSeconds": {
+            "default": 120,
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 300
+          }
+        },
+        "required": [
+          "confirm"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("setup.enroll").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_setup_identity",
+      description: "Configure the account's non-secret Vanderbilt email and/or VUnetID in the native host vault. A VUnetID alone supplies its Vanderbilt sign-in address. Never accepts passwords or passkeys. Refuses to change an identity while an existing passkey is bound to another account.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "vunetId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          }
+        }
+      }),
+      execute: async (params, config) =>
+        operation("setup.identity").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_setup_prepare",
+      description: "Prepare real OneVU self-service setup in a dedicated managed-browser tab. Inspect the security-method page and use an existing vaulted passkey for sign-in when available. Does not issue, replace or revoke any passkey. First-time users complete sign-in in the managed browser, never in chat.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "keepTab": {
+            "default": true,
+            "description": "Keep the setup tab open for the user's first sign-in; false is for read-only diagnostics.",
+            "type": "boolean"
+          }
+        }
+      }),
+      execute: async (params, config) =>
+        operation("setup.prepare").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_setup_status",
+      description: "Check Vanderbilt account setup without returning credentials: configured identity, passkey validity, managed-browser availability and the next step. Existing passkeys are never replaced.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {}
+      }),
+      execute: async (params, config) =>
+        operation("setup.status").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_web",
       description: "Open this tool's web app: serves the operations page and the MCP endpoint on a free local port, opens a browser there, and returns the URL.",
       parameters: Type.Unsafe({
         "type": "object",

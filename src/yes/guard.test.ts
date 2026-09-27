@@ -7,9 +7,21 @@ import {
 } from "./guard.js";
 
 describe("yes write guard", () => {
-  it("lets reads through, anywhere", () => {
+  it("lets non-mutating reads through", () => {
     expect(classify("https://yes.vanderbilt.edu/some/deep/api", "GET")).toBe("read");
     expect(() => assertSafe("https://yes.vanderbilt.edu/more/SeaWes", "GET")).not.toThrow();
+  });
+
+  it("blocks enrollment and known cart/planner actions even when they use GET", () => {
+    expect(classify("https://yes.vanderbilt.edu/ProReg/enroll", "GET")).toBe("enrollment");
+    for (const route of ["StudentClassExecute!add", "StudentClassExecute!remove", "PlannedCourseJson!save", "PlannedCourse!remove"]) {
+      expect(() => assertSafe(`https://more.app.vanderbilt.edu/more/${route}.action`, "GET")).toThrow(YesWriteBlockedError);
+    }
+  });
+
+  it("does not let percent-encoding bypass mutation guards", () => {
+    expect(classify("https://yes.vanderbilt.edu/%65nroll", "GET")).toBe("enrollment");
+    expect(classify("https://more.app.vanderbilt.edu/more/StudentClassExecute%21add.action", "GET")).toBe("blocked");
   });
 
   it("hard-blocks enrollment-shaped mutations, allowlist or not", () => {

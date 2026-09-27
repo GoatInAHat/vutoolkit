@@ -49,7 +49,7 @@ function mintedMicrosoft(): MintedMicrosoftSession {
 }
 const DEPS: EnsureDeps = {
   ceremony: async () => minted(),
-  secretsRead: (name: string) => (name === "VANDERBILT_EMAIL" ? "bennett.g.vernon@vanderbilt.edu" : JSON.stringify(PASSKEY)),
+  secretsRead: (name: string) => (name === "VANDERBILT_EMAIL" ? "synthetic@vanderbilt.edu" : JSON.stringify(PASSKEY)),
   ensureBrowser: async () => {},
   probe: async () => true,
   env: {},

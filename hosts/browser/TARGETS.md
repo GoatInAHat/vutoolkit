@@ -9,16 +9,30 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 
 | Operation | Chromium (chrome, edge) | Firefox | Safari |
 |---|---|---|---|
+| `courses.detail` | native | native | native |
+| `courses.search` | native | native | native |
+| `courses.sections` | native | native | native |
+| `degree.audit` | native | native | native |
+| `degree.graph` | native | native | native |
+| `degree.options` | native | native | native |
 | `gpa.verify` | native | native | native |
 | `grades.whatif` | native | native | native |
 | `graph.call` | native | native | native |
+| `planner.graph` | native | native | native |
+| `professors.search` | native | native | native |
 | `record.fetch` | native | native | native |
+| `scheduler.cartPlan` | native | native | native |
+| `scheduler.solve` | native | native | native |
 | `sessions.ensure` | native | native | native |
 | `sessions.forget` | native | native | native |
 | `sessions.ingest` | native | native | native |
 | `sessions.list` | native | native | native |
 | `sessions.open` | native | native | native |
 | `sessions.refresh` | native | native | native |
+| `setup.enroll` | native | native | native |
+| `setup.identity` | native | native | native |
+| `setup.prepare` | native | native | native |
+| `setup.status` | native | native | native |
 | `web` | native | native | native |
 
 ## What the table cannot tell you

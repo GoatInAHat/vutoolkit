@@ -58,6 +58,7 @@ export function parseAaiRecord(html: string): Transcript {
     throw new Error("aai record: no course tables found — layout changed, or the session did not survive the dance");
   }
   const terms: TermRecord[] = [];
+  let postedCumulativeGpa: number | undefined;
   for (const { label, rows } of [...tables].reverse()) {
     const courses: CourseRecord[] = [];
     let postedGpa: number | undefined;
@@ -72,18 +73,28 @@ export function parseAaiRecord(html: string): Transcript {
         if (qHrs > 0 && Number.isFinite(gpa)) postedGpa = gpa;
         continue;
       }
-      if (/^cumulative totals/i.test(head)) continue; // recomputed by the engine, never copied
+      if (/^cumulative totals/i.test(head)) {
+        // This is an independent golden anchor, not the engine's computed cumulative.
+        // Tables are processed oldest to newest, so the last valid total is the latest.
+        const qHrs = num(cells[3]);
+        const posted = Number.parseFloat(cells[cells.length - 1] ?? "");
+        if (qHrs > 0 && Number.isFinite(posted)) postedCumulativeGpa = posted;
+        continue;
+      }
       if (/^course$/i.test(head) || cells.length < 6) continue; // header row or layout noise
       const grade = cells[3]?.trim();
+      const credits = Math.max(num(cells[4]), num(cells[5]), num(cells[6]));
+      const gpaHours = num(cells[6]);
       courses.push({
         course: head,
-        credits: Math.max(num(cells[4]), num(cells[5])), // VU Credit, else VU In Prgrs
+        credits, // failed classes can have GPA hours but no earned credit
+        ...(grade && gpaHours !== credits ? { gpaCredits: gpaHours } : {}),
         ...(grade !== "" ? { grade } : {}),
       });
     }
     terms.push({ term: label, courses, ...(postedGpa !== undefined ? { postedGpa } : {}) });
   }
-  return { terms };
+  return { terms, ...(postedCumulativeGpa !== undefined ? { postedCumulativeGpa } : {}) };
 }
 
 /**

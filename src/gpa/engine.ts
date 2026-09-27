@@ -24,6 +24,8 @@ export const DEFAULT_SCALE: GradeScale = {
 export interface CourseRecord {
   course: string;
   credits: number;
+  /** Institution-posted GPA hours, when different from earned/enrolled credits (e.g. repeats). */
+  gpaCredits?: number;
   /** Posted letter mark, or undefined while unposted (what-if fills these). */
   grade?: string;
 }
@@ -37,12 +39,16 @@ export interface TermRecord {
 
 export interface Transcript {
   terms: TermRecord[];
+  /** Latest cumulative GPA posted by YES, independent of the engine's recomputation. */
+  postedCumulativeGpa?: number;
   scale?: GradeScale;
 }
 
 export interface HypotheticalGrade {
   course: string;
   grade: string;
+  /** Disambiguates multiple attempts of the same course. */
+  term?: string;
 }
 
 export interface TermProjection {
@@ -78,19 +84,19 @@ function graded(terms: TermRecord[], scale: GradeScale): CourseRecord[] {
  * unknown marks would corrupt every downstream GPA.
  */
 function gpaBearing(c: CourseRecord, scale: GradeScale): boolean {
-  if (c.grade === undefined || scale.nonGpa.includes(c.grade)) return false;
+  if (c.grade === undefined || c.gpaCredits === 0 || scale.nonGpa.includes(c.grade)) return false;
   if (!(c.grade in scale.points)) throw new GpaError(`unknown grade mark '${c.grade}' on ${c.course}`);
   return true;
 }
 
 export function gpaCredits(courses: CourseRecord[], scale: GradeScale = DEFAULT_SCALE): number {
-  return courses.filter((c) => gpaBearing(c, scale)).reduce((sum, c) => sum + c.credits, 0);
+  return courses.filter((c) => gpaBearing(c, scale)).reduce((sum, c) => sum + (c.gpaCredits ?? c.credits), 0);
 }
 
 export function qualityPoints(courses: CourseRecord[], scale: GradeScale = DEFAULT_SCALE): number {
   return courses
     .filter((c) => gpaBearing(c, scale))
-    .reduce((sum, c) => sum + c.credits * scale.points[c.grade!]!, 0);
+    .reduce((sum, c) => sum + (c.gpaCredits ?? c.credits) * scale.points[c.grade!]!, 0);
 }
 
 export function gpa(courses: CourseRecord[], scale: GradeScale = DEFAULT_SCALE): number | null {
@@ -154,4 +160,33 @@ export function matchesPostedGpa(raw: number | null, posted: number): boolean {
   const rounded = round3(raw);
   const truncated = Math.floor(raw * 1000) / 1000;
   return rounded === posted || truncated === posted;
+}
+
+/** Verify independent posted totals; never substitute a recomputation for a missing anchor. */
+export function verifyTranscript(transcript: Transcript) {
+  const projection = whatIf(transcript, []);
+  const rows = transcript.terms.flatMap((term, index) => {
+    if (term.postedGpa === undefined) return [];
+    const raw = projection.terms[index]?.gpa ?? null;
+    return [{ term: term.term, posted: term.postedGpa, recomputed: round3(raw), match: matchesPostedGpa(raw, term.postedGpa) }];
+  });
+  const cumulativeCheck = {
+    posted: transcript.postedCumulativeGpa ?? null,
+    recomputed: round3(projection.cumulative),
+    match: transcript.postedCumulativeGpa === undefined
+      ? null
+      : matchesPostedGpa(projection.cumulative, transcript.postedCumulativeGpa),
+  };
+  const ok = rows.length > 0 && rows.every((row) => row.match) && cumulativeCheck.match !== false;
+  return {
+    ok,
+    rows,
+    cumulative: cumulativeCheck.recomputed,
+    cumulativeCheck,
+    note: !ok
+      ? "MISMATCH or no posted term anchors: do not trust what-if output until the record and grade scale are verified"
+      : cumulativeCheck.match === null
+        ? "all posted term GPAs reproduced; cumulative GPA is unverified because no posted cumulative anchor was supplied"
+        : "all posted term and cumulative GPAs reproduced",
+  };
 }

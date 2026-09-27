@@ -5,7 +5,14 @@
 # `gh workflow run release.yml -f tag=vX.Y.Z` — never `gh run rerun`, which replays the
 # original run's secret snapshot. `release` first retracts every registry a surface dropped
 # since the previous tag published to (git is the ledger; `toolfactory unpublish`), and
-# `toolfactory secrets status` / `bootstrap-repo` cover the one-time steps that are left.
+# `toolfactory secrets-usage status` / `bootstrap-repo` cover the one-time steps that are left.
+#
+# ClawHub's GitHub-OIDC trusted publishing covers `workflow_dispatch` only, not
+# `push: tags` — this leg is the one that is not secretless (§7): it needs a stored
+# CLAWHUB_TOKEN repo secret, and `clawhub package trusted-publisher set` does not help here.
+#
+# ClawHub skill publishing has no OIDC trusted-publishing path yet (V1 is token-only,
+# per its own docs) — this leg reuses the same stored CLAWHUB_TOKEN as publish-clawhub.
 #
 # None of Chrome Web Store, Firefox Add-ons or Edge Add-ons supports GitHub OIDC — like
 # CLAWHUB_TOKEN above, publish-browser-ext is a stored-secrets leg, gated per store on that
@@ -40,6 +47,8 @@ jobs:
     outputs:
       sha: ${{ steps.tag.outputs.sha }}
       npm: ${{ steps.presence.outputs.npm }}
+      clawhub_package: ${{ steps.presence.outputs.clawhub_package }}
+      clawhub_skill: ${{ steps.presence.outputs.clawhub_skill }}
       pages: ${{ steps.presence.outputs.pages }}
       chrome: ${{ steps.presence.outputs.chrome }}
       firefox: ${{ steps.presence.outputs.firefox }}
@@ -84,6 +93,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TRUSTED_PUBLISHER: ${{ vars.NPM_TRUSTED_PUBLISHER }}
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
@@ -96,6 +106,8 @@ jobs:
           EDGE_API_KEY: ${{ secrets.EDGE_API_KEY }}
         run: |-
           npm=false; if [ "$NPM_TRUSTED_PUBLISHER" = true ] || [ -n "$NPM_TOKEN" ]; then npm=true; else echo "::notice::npm: not published at this tag — https://www.npmjs.com/settings/~/tokens"; fi; echo "npm=$npm" >> "$GITHUB_OUTPUT"
+          clawhub_package=false; if [ -n "$CLAWHUB_TOKEN" ]; then clawhub_package=true; else echo "::notice::clawhub-package: not published at this tag — https://clawhub.ai"; fi; echo "clawhub_package=$clawhub_package" >> "$GITHUB_OUTPUT"
+          clawhub_skill=false; if [ -n "$CLAWHUB_TOKEN" ]; then clawhub_skill=true; else echo "::notice::clawhub-skill: not published at this tag — https://clawhub.ai"; fi; echo "clawhub_skill=$clawhub_skill" >> "$GITHUB_OUTPUT"
           pages=false; if gh api repos/GoatInAHat/vutoolkit/pages >/dev/null 2>&1; then pages=true; else echo "::notice::pages: not published at this tag — https://github.com/GoatInAHat/vutoolkit/settings/pages"; fi; echo "pages=$pages" >> "$GITHUB_OUTPUT"
           chrome=false; if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then chrome=true; else echo "::notice::chrome: not published at this tag — https://chrome.google.com/webstore/devconsole"; fi; echo "chrome=$chrome" >> "$GITHUB_OUTPUT"
           firefox=false; if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then firefox=true; else echo "::notice::firefox: not published at this tag — https://addons.mozilla.org/developers/addon/api/key/"; fi; echo "firefox=$firefox" >> "$GITHUB_OUTPUT"
@@ -132,13 +144,13 @@ jobs:
       - name: npm tarball
         run: npm pack --pack-destination dist/release
       - name: OpenClaw plugin tarball
-        run: npm --prefix hosts/openclaw install && npm --prefix hosts/openclaw run build && npm pack ./hosts/openclaw --pack-destination dist/release
+        run: npm --prefix hosts/openclaw install && npm --prefix hosts/openclaw run build && cp hosts/openclaw/package.json hosts/openclaw/package.json.prepack && (trap 'mv hosts/openclaw/package.json.prepack hosts/openclaw/package.json' EXIT; (cd hosts/openclaw && npm pkg set 'dependencies.vutoolkit=0.3.0') && npm pack ./hosts/openclaw --pack-destination dist/release)
       - name: plugin bundle
         run: set -- skills; for path in LICENSE LICENSE.md LICENSE.txt NOTICE NOTICE.md NOTICE.txt; do if [ -f "$path" ]; then set -- "$@" "$path"; fi; done; zip -qr dist/release/vutoolkit-plugin.zip "$@"
       - name: web tarball
         run: tar -czf dist/release/vutoolkit-web.tar.gz -C web/dist .
       - name: browser extension zips
-        run: npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b chrome && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b firefox && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b edge && cp hosts/browser/.output/vutoolkit-0.2.0-chrome.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-firefox.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-edge.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.2.0-sources.zip dist/release/
+        run: npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b chrome && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b firefox && npm --prefix hosts/browser exec --no -- wxt zip hosts/browser -b edge && cp hosts/browser/.output/vutoolkit-0.3.0-chrome.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.3.0-firefox.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.3.0-edge.zip dist/release/ && cp hosts/browser/.output/vutoolkit-0.3.0-sources.zip dist/release/
       - name: Firefox signed xpi (only when FIREFOX_JWT_ISSUER/FIREFOX_JWT_SECRET are set)
         run: if [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then npm --prefix hosts/browser exec --no -- web-ext sign --channel=unlisted --api-key="$FIREFOX_JWT_ISSUER" --api-secret="$FIREFOX_JWT_SECRET" --source-dir hosts/browser/.output/firefox-mv2 --artifacts-dir dist/release; fi
       - name: coverage report
@@ -173,7 +185,30 @@ jobs:
       - name: npm publish
         env:
           NPM_TOKEN: ${{ vars.NPM_TRUSTED_PUBLISHER != 'true' && secrets.NPM_TOKEN || '' }}
-        run: 'if npm view vutoolkit@0.2.0 version >/dev/null 2>&1; then echo "::notice::npm: vutoolkit@0.2.0 already published; skipping immutable version."; elif [ "$NPM_TRUSTED_PUBLISHER" = true ]; then npm publish ./release-assets/vutoolkit-0.2.0.tgz --access public; else NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish ./release-assets/vutoolkit-0.2.0.tgz --access public; fi'
+        run: 'if npm view vutoolkit@0.3.0 version >/dev/null 2>&1; then echo "::notice::npm: vutoolkit@0.3.0 already published; skipping immutable version."; elif [ "$NPM_TRUSTED_PUBLISHER" = true ]; then npm publish ./release-assets/vutoolkit-0.3.0.tgz --access public; else NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish ./release-assets/vutoolkit-0.3.0.tgz --access public; fi'
+  publish-clawhub:
+    if: ${{ !cancelled() && needs.package.result == 'success' && !contains(needs.*.result, 'failure') && needs.gate.outputs.clawhub_package == 'true' }}
+    needs:
+      - gate
+      - package
+      - publish-npm
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@main
+    with:
+      package_artifact_name: release-assets
+      package_artifact_path: openclaw-plugin-vutoolkit-0.3.0.tgz
+      dry_run: false
+      wait_for_publication: true
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
+  publish-clawhub-skill:
+    if: needs.gate.outputs.clawhub_skill == 'true'
+    needs: gate
+    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@main
+    with:
+      skill_path: skills/vutoolkit
+      dry_run: false
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
   publish-browser-ext:
     needs:
       - gate
@@ -211,17 +246,17 @@ jobs:
       - name: wxt submit --dry-run (zips, plus a live credential read for Chrome and Firefox)
         run: |-
           flags=""
-          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.2.0-chrome.zip"; fi
-          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.2.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.2.0-sources.zip"; fi
-          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.2.0-edge.zip"; fi
+          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.3.0-chrome.zip"; fi
+          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.3.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.3.0-sources.zip"; fi
+          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.3.0-edge.zip"; fi
           if [ -z "$flags" ]; then echo "No browser store credentials configured; skipping wxt submit."; exit 0; fi
           npm --prefix hosts/browser exec --no -- wxt submit --dry-run $flags
       - name: wxt submit
         run: |-
           flags=""
-          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.2.0-chrome.zip"; fi
-          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.2.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.2.0-sources.zip"; fi
-          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.2.0-edge.zip"; fi
+          if [ -n "$CHROME_EXTENSION_ID" ] && [ -n "$CHROME_PUBLISHER_ID" ] && [ -n "$CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL" ] && [ -n "$CHROME_SERVICE_ACCOUNT_PRIVATE_KEY" ]; then flags="$flags --chrome-zip release-assets/vutoolkit-0.3.0-chrome.zip"; fi
+          if [ -n "$FIREFOX_EXTENSION_ID" ] && [ -n "$FIREFOX_JWT_ISSUER" ] && [ -n "$FIREFOX_JWT_SECRET" ]; then flags="$flags --firefox-zip release-assets/vutoolkit-0.3.0-firefox.zip --firefox-sources-zip release-assets/vutoolkit-0.3.0-sources.zip"; fi
+          if [ -n "$EDGE_PRODUCT_ID" ] && [ -n "$EDGE_CLIENT_ID" ] && [ -n "$EDGE_API_KEY" ]; then flags="$flags --edge-zip release-assets/vutoolkit-0.3.0-edge.zip"; fi
           if [ -z "$flags" ]; then echo "No browser store credentials configured; skipping wxt submit."; exit 0; fi
           npm --prefix hosts/browser exec --no -- wxt submit $flags
   release:
@@ -229,6 +264,8 @@ jobs:
       - gate
       - package
       - publish-npm
+      - publish-clawhub
+      - publish-clawhub-skill
       - publish-browser-ext
     if: ${{ !cancelled() && needs.package.result == 'success' && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
