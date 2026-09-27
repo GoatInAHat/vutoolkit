@@ -187,6 +187,10 @@ jobs:
           NPM_TOKEN: ${{ vars.NPM_TRUSTED_PUBLISHER != 'true' && secrets.NPM_TOKEN || '' }}
         run: 'if npm view vutoolkit@0.4.0 version >/dev/null 2>&1; then echo "::notice::npm: vutoolkit@0.4.0 already published; skipping immutable version."; elif [ "$NPM_TRUSTED_PUBLISHER" = true ]; then npm publish ./release-assets/vutoolkit-0.4.0.tgz --access public; else NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish ./release-assets/vutoolkit-0.4.0.tgz --access public; fi'
   publish-clawhub:
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
     if: ${{ !cancelled() && needs.package.result == 'success' && !contains(needs.*.result, 'failure') && needs.gate.outputs.clawhub_package == 'true' }}
     needs:
       - gate
@@ -201,6 +205,9 @@ jobs:
     secrets:
       clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}
   publish-clawhub-skill:
+    permissions:
+      contents: read
+      id-token: write
     if: needs.gate.outputs.clawhub_skill == 'true'
     needs: gate
     uses: openclaw/clawhub/.github/workflows/skill-publish.yml@main
