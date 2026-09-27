@@ -107,7 +107,9 @@ On an account-configured host, run `npm run test:live` to opt into the Tool Fact
 
 ## Distribution
 
-The generated commands below describe the selected distribution surfaces. Registry availability is determined by a successful published release; a generated install command alone does not establish that a package or store listing exists.
+**v0.4.0 availability (checked 2026-09-27):** [GitHub release downloads](https://github.com/GoatInAHat/vutoolkit/releases/tag/v0.4.0) and the ClawHub skill/native package are published. The native package is flagged **suspicious** by ClawHub's scanner; publication is not a clean security verdict. **npm is not published yet**, so the `npx -y vutoolkit` and `npm install vutoolkit` commands below are not available. Use the [source installation](#quick-start-from-source) until the first npm publish and trusted-publisher configuration are complete.
+
+The generated commands below describe the selected distribution surfaces, not proof that every registry or browser-store listing is available. See [release acceptance](docs/ACCEPTANCE.md) for verified behavior and remaining limits.
 
 <!-- tf:install -->
 ## Install

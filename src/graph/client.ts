@@ -23,12 +23,17 @@ export interface GraphCallResult {
   data: unknown;
 }
 
-/** Build the request URL; throws on paths that try to leave the pinned Graph origin. */
+/** Build the request URL; throws if URL normalization leaves the pinned Graph API root. */
 export function graphUrl(path: string, query?: Record<string, string | number>): string {
   if (!/^\/[^\/]/.test(path)) {
     throw new TypeError("path must be a relative Graph v1.0 path like /me/messages");
   }
   const url = new URL(BASE + path);
+  // URL parsing normalizes literal and percent-encoded dot segments. Validate the resolved URL,
+  // not just the input spelling, before any caller can acquire a bearer token for this request.
+  if (url.origin !== "https://graph.microsoft.com" || (url.pathname !== "/v1.0" && !url.pathname.startsWith("/v1.0/"))) {
+    throw new TypeError("path must stay within the Microsoft Graph v1.0 API root");
+  }
   if (query !== undefined) {
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, String(value));
   }
