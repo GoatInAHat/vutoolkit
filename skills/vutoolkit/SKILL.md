@@ -15,13 +15,16 @@ This skill supplies instructions, not the runtime or credentials. First check wh
 
 ## Workflow
 
-1. Use the current host's account and secret vault. Call `sessions.ensure` for the required identity provider; it checks cached sessions and authenticates when necessary. Keep different people's accounts in separate host vaults and data directories.
+1. Use the current host's account and secret vault. Keep different people's accounts in separate host vaults and data directories. `setup.status` reports configuration/browser prerequisites, not live acceptance of a passkey. A structurally valid key may still be rejected by OneVU.
 2. For GPA planning, call `record.fetch`, then pass the returned transcript to `gpa.verify`. Only describe a projection as verified when the official posted totals match; the default synthetic fixture does not verify a real student's record. Pass that same transcript to `grades.whatif` with the requested hypothetical grades.
 3. For Microsoft data, use `graph.call` with the smallest read that answers the request. Confirm the account identity with `/me` when validating a new installation. Use POST, PATCH, PUT, or DELETE only for actions authorized by the account holder.
 4. If authentication fails, report the typed error and the missing setup prerequisite. Do not claim a live check passed because a fixture or cached metadata call succeeded.
 5. For degree planning, start from `degree.audit` or `degree.graph`, retrieve official alternatives with `degree.options`, and use catalog metadata with `planner.graph`. Preserve unknown prerequisites and truncation warnings; never equate a ranked path with official eligibility.
 6. For scheduling, fetch live sections with `courses.sections`, then use `scheduler.solve`. Check TBA times, component compatibility, and term before using a result. `scheduler.cartPlan` only returns a diff; the YES extension applies user-selected cart changes, never enrollment.
-7. First-time setup uses `setup.identity`, `setup.status`, and `setup.prepare`. Only run `setup.enroll` when the account holder explicitly requests the security change. Do not replace an existing passkey or ask for secret values in chat.
+7. For first-time setup, prefer one call to `setup.run({"confirm":true})` after the account holder authorizes connecting their account. If identity is missing, configure only non-secret email/VUnetID with `setup.identity`, then retry. The operation reuses authenticated browser state or deterministically submits identity and optional `VANDERBILT_PASSWORD` from the host vault; do not drive a custom login or cookie-harvest loop. Never ask for passwords or codes in chat.
+8. Respect typed prerequisite errors. `PASSWORD_REQUIRED` means configure the named vault entry through a secure host UI or use `setup.prepare` for manual sign-in, then retry. `MFA_REQUIRED` means wait for the existing one-time approval, not generate repeated pushes. `BROWSER_UNAVAILABLE` means repair the selected compatible CDP browser/connection; never silently switch an explicit endpoint to another profile.
+9. For an asleep/unavailable account holder use `allowInteractiveVerification:false`. It reuses existing authentication without submitting a password or initiating phone verification. If no authenticated session is available, preserve progress and report the blocker; do not wake the user or call cookie-only access complete.
+10. A known-rejected toolkit key requires explicit recovery authorization and `recovery:true`; the rejected key is not retried and is preserved as `VANDERBILT_PASSKEY_PREVIOUS` only after a new credential is verified. A distinct pending credential blocks duplicate enrollment. `status:"partial"` is not full setup: check `microsoftSession` and repair that connection separately. Successful cached-session access alone does not independently test a passkey assertion.
 
 ## Boundaries
 
@@ -105,9 +108,9 @@ Arguments: `method`, `path`, `query`, `body`.
 
 ### planner.graph
 
-Deterministic AND/OR prerequisite graph and ranked alternative paths for supplied course metadata. Shared prerequisites count once. Completed/planned courses and weighted goals are supported. Unknown prose, missing metadata, cycles and search truncation remain explicit; degree.audit is the official degree authority.
+Deterministically rank paths for supplied official requirement alternatives and/or course goals. Shared prerequisites count once; completed and planned work is factored in. Unknown prose, missing metadata, cycles and truncation remain explicit. A model-optimal result is exhaustive only for supplied inputs; degree.audit remains the official authority.
 
-Arguments: `courses`, `completed`, `planned`, `goals`, `preferences`, `maxAlternatives`.
+Arguments: `courses`, `completed`, `planned`, `goals`, `requirements`, `preferences`, `maxAlternatives`.
 
 `vutoolkit planner.graph --json '<arguments>'` prints a JSON result. MCP tool `planner.graph` on server `vutoolkit` returns the same result as `structuredContent`.
 
@@ -191,9 +194,9 @@ Arguments: `idp`.
 
 ### setup.enroll
 
-Explicitly issue a toolkit passkey through OneVU's actual security-method enrollment and store it directly in the host vault. Requires an authenticated managed browser and confirm=true. Refuses to replace an existing toolkit passkey; never revokes account credentials. This changes account security; run only after the account owner's explicit request. Returns metadata, never key material.
+Issue a toolkit passkey through OneVU's security-method enrollment. Requires authenticated managed-browser sign-in and explicit account-holder confirmation. For recovery only, replaceExisting=true stages and vault-verifies the newly issued credential, preserves the prior key in VANDERBILT_PASSKEY_PREVIOUS, then promotes the new key; use only after the account holder reports the current toolkit key was rejected and confirms the browser is signed into their own configured account. Never accepts secrets in arguments or revokes OneVU passkeys. Returns metadata only.
 
-Arguments: `confirm`, `timeoutSeconds`.
+Arguments: `confirm`, `replaceExisting`, `timeoutSeconds`.
 
 `vutoolkit setup.enroll --json '<arguments>'` prints a JSON result. MCP tool `setup.enroll` on server `vutoolkit` returns the same result as `structuredContent`.
 
@@ -207,15 +210,23 @@ Arguments: `email`, `vunetId`.
 
 ### setup.prepare
 
-Prepare real OneVU self-service setup in a dedicated managed-browser tab. Inspect the security-method page and use an existing vaulted passkey for sign-in when available. Does not issue, replace or revoke any passkey. First-time users complete sign-in in the managed browser, never in chat.
+Prepare a dedicated OneVU tab for the account holder to sign in. Normal setup may load the configured toolkit passkey; recovery=true deliberately does not load or retry the rejected key and requires the holder to use their usual sign-in method. Does not issue or change credentials. The visible page must match the configured student's email before enrollment.
 
-Arguments: `keepTab`.
+Arguments: `keepTab`, `recovery`.
 
 `vutoolkit setup.prepare --json '<arguments>'` prints a JSON result. MCP tool `setup.prepare` on server `vutoolkit` returns the same result as `structuredContent`.
 
+### setup.run
+
+Deterministic one-call Vanderbilt setup or explicit passkey recovery. Uses this host's configured identity and optional vaulted VANDERBILT_PASSWORD, first reusing an authenticated browser session. On first-time setup it enrolls and vault-verifies a new OneVU passkey, then establishes Vanderbilt and Microsoft sessions. status=partial means Vanderbilt is ready but Microsoft is not; do not claim full setup. Existing valid keys are reused, never rotated. recovery=true skips a rejected key and preserves it as a vault backup. With allowInteractiveVerification=false, setup does not submit a password or click a verification factor; OneVU may still require step-up for enrollment. Returns no credentials. Typed errors tell the caller what prerequisite or one-time verification is missing.
+
+Arguments: `confirm`, `recovery`, `allowInteractiveVerification`, `timeoutSeconds`.
+
+`vutoolkit setup.run --json '<arguments>'` prints a JSON result. MCP tool `setup.run` on server `vutoolkit` returns the same result as `structuredContent`.
+
 ### setup.status
 
-Check Vanderbilt account setup without returning credentials: configured identity, passkey validity, managed-browser availability and the next step. Existing passkeys are never replaced.
+Check Vanderbilt account setup without returning credentials: configured identity, structural passkey validity, managed-browser availability and the next step. Structural validity does not prove OneVU accepts the key.
 
 `vutoolkit setup.status --json '<arguments>'` prints a JSON result. MCP tool `setup.status` on server `vutoolkit` returns the same result as `structuredContent`.
 

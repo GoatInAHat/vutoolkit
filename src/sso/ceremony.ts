@@ -38,6 +38,8 @@ export interface CeremonyOptions {
   stepMs?: number;
   /** Whole-ceremony deadline; defaults to 120 seconds. */
   timeoutMs?: number;
+  /** Prove this key signs in from an empty, disposable browser context. */
+  requireAssertion?: boolean;
 }
 
 export interface MintedSession {
@@ -47,6 +49,10 @@ export interface MintedSession {
   expiresAt?: string;
   finalUrl: string;
   signCountUsed: number;
+  /** True only after an isolated assertion and exact OneVU home redirect. */
+  passkeyVerified?: boolean;
+  /** Observed counter after the verified assertion, for vault persistence. */
+  assertedSignCount?: number;
 }
 
 /** base64url/base64 to padded base64, exactly as CDP addCredential expects. */
@@ -145,6 +151,20 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
       finalUrl = String(probe.url ?? "");
       const state = classifyOktaFlow(probe);
       if (state.kind === "success") {
+        let assertedSignCount: number | undefined;
+        if (opts.requireAssertion) {
+          let exactHome = false;
+          try {
+            const success = new URL(finalUrl);
+            exactHome = success.origin === "https://onevu.vanderbilt.edu" && success.pathname === "/app/UserHome";
+          } catch { /* reject malformed success URL */ }
+          if (!exactHome) throw new AuthError("OKTA_FLOW_CHANGED", "Passkey verification did not finish on OneVU's authenticated home; no verified session was returned.", { retryable: false });
+          const asserted = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
+          const key = asserted.credentials.find((credential) => toCdpB64(credential.credentialId) === toCdpB64(opts.passkey.credentialId));
+          if (!key || !Number.isFinite(key.signCount) || key.signCount <= signCountUsed)
+            throw new AuthError("OKTA_REJECTED", "OneVU reached a signed-in page without a verified assertion from the newly enrolled toolkit passkey; no verified session was returned.", { retryable: false });
+          assertedSignCount = key.signCount;
+        }
         const cookies = await harvestCookies(send);
         const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
         return {
@@ -153,6 +173,7 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
           expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
           finalUrl,
           signCountUsed,
+          ...(opts.requireAssertion ? { passkeyVerified: true, assertedSignCount } : {}),
         };
       }
       if (state.kind === "error") {
@@ -179,5 +200,5 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
       `OneVU sign-in did not reach the OneVU home within ${Math.round(timeoutMs / 1000)}s (last page ${where}; identifier submits ${identifierSubmits}, passkey selections ${webauthnClicks})`,
       { retryable: true },
     );
-  });
+  }, { isolated: opts.requireAssertion === true });
 }

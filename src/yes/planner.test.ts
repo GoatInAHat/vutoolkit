@@ -67,4 +67,78 @@ describe("prerequisite planning", () => {
     ] });
     expect(result.nodes.find((node) => node.id === "CS 3000")?.minimumAdditionalCredits).toBeUndefined();
   });
+  it("ranks all supplied official requirement alternatives together and counts a shared prerequisite once", () => {
+    const result = buildDegreeGraph({ requirements: [
+      { id: "major-core", label: "Major core", expression: parsePrerequisites("CS 3000 or CS 3100") },
+      { id: "capstone", expression: parsePrerequisites("CS 4000") },
+    ], courses: [
+      { course: "CS 1000", credits: 3, prerequisites: parsePrerequisites("none") },
+      { course: "CS 2000", credits: 4, prerequisites: parsePrerequisites("none") },
+      { course: "CS 3000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+      { course: "CS 3100", credits: 3, prerequisites: parsePrerequisites("CS 2000") },
+      { course: "CS 4000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+    ] });
+    expect(result.alternatives[0]).toMatchObject({ courses: ["CS 1000", "CS 3000", "CS 4000"], credits: 9, plannedCourses: [] });
+    expect(result.modelOptimal).toBe(true);
+    expect(result.rankingScope).toContain("supplied official requirement alternatives");
+    expect(result.nodes.find((node) => node.id === "requirement:major-core")?.kind).toBe("requirement");
+  });
+  it("keeps planned work visible, maps its prerequisites, and excludes its credits from additional work", () => {
+    const result = buildDegreeGraph({ planned: ["CS 3000"], requirements: [{ id: "core", expression: parsePrerequisites("CS 3000") }], courses: [
+      { course: "CS 1000", credits: 3, prerequisites: parsePrerequisites("none") },
+      { course: "CS 3000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+    ] });
+    expect(result.alternatives[0]).toMatchObject({ courses: ["CS 1000"], plannedCourses: ["CS 3000"], credits: 3 });
+    expect(result.modelOptimal).toBe(true);
+  });
+  it("does not advertise a model optimum for unresolved supplied requirement alternatives", () => {
+    const result = buildDegreeGraph({ requirements: [{ id: "elective", expression: { kind: "unknown", text: "Official wildcard: verify with adviser" } }], courses: [] });
+    expect(result.modelOptimal).toBe(false);
+    expect(result.alternatives[0]?.unresolved).toContain("Official wildcard: verify with adviser");
+  });
+  it("selects a globally shared prerequisite path even when a requirement's local option costs more", () => {
+    const result = buildDegreeGraph({ requirements: [
+      { id: "first", expression: parsePrerequisites("CS 3000 or CS 3100") },
+      { id: "second", expression: parsePrerequisites("CS 4000") },
+    ], courses: [
+      { course: "CS 1000", credits: 4, prerequisites: parsePrerequisites("none") },
+      { course: "CS 2000", credits: 3, prerequisites: parsePrerequisites("none") },
+      { course: "CS 3000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+      { course: "CS 3100", credits: 3, prerequisites: parsePrerequisites("CS 2000") },
+      { course: "CS 4000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+    ] });
+    // CS 3100 is cheaper in isolation, but CS 3000 shares CS 1000 with CS 4000.
+    expect(result.alternatives[0]).toMatchObject({ courses: ["CS 1000", "CS 3000", "CS 4000"], credits: 10, score: 10 });
+    expect(result.modelOptimal).toBe(true);
+  });
+  it("uses positive and negative preferences in the exhaustive model score", () => {
+    const result = buildDegreeGraph({ requirements: [{ id: "choice", expression: parsePrerequisites("CS 3000 or CS 4000") }], preferences: { "CS 4000": 3, "CS 1000": -4 }, courses: [
+      { course: "CS 1000", credits: 3, prerequisites: parsePrerequisites("none") },
+      { course: "CS 2000", credits: 4, prerequisites: parsePrerequisites("none") },
+      { course: "CS 3000", credits: 3, prerequisites: parsePrerequisites("CS 1000") },
+      { course: "CS 4000", credits: 3, prerequisites: parsePrerequisites("CS 2000") },
+    ] });
+    expect(result.alternatives[0]).toMatchObject({ courses: ["CS 2000", "CS 4000"], credits: 7, score: 4 });
+    expect(result.modelOptimal).toBe(true);
+  });
+  it("never calls a capped enumeration model-optimal, even when the retained path has known metadata", () => {
+    const result = buildDegreeGraph({ maxAlternatives: 1, requirements: [{ id: "choice", expression: parsePrerequisites("CS 1000 or CS 2000") }], courses: [
+      { course: "CS 1000", credits: 4, prerequisites: parsePrerequisites("none") },
+      { course: "CS 2000", credits: 3, prerequisites: parsePrerequisites("none") },
+    ] });
+    expect(result.truncated).toBe(true);
+    expect(result.modelOptimal).toBe(false);
+  });
+  it("makes planned work mandatory while allowing it to satisfy an alternative", () => {
+    const result = buildDegreeGraph({ planned: ["CS 3000"], requirements: [{ id: "choice", expression: parsePrerequisites("CS 3000 or CS 4000") }], courses: [
+      { course: "CS 3000", credits: 3, prerequisites: parsePrerequisites("none") },
+      { course: "CS 4000", credits: 3, prerequisites: parsePrerequisites("none") },
+    ] });
+    expect(result.alternatives[0]).toMatchObject({ courses: [], plannedCourses: ["CS 3000"], credits: 0 });
+    expect(result.alternatives.every((alternative) => alternative.plannedCourses.includes("CS 3000"))).toBe(true);
+  });
+  it("does not call an empty or fully satisfied target set model-optimal", () => {
+    expect(buildDegreeGraph({ courses: [] }).modelOptimal).toBe(false);
+    expect(buildDegreeGraph({ courses: [], requirements: [{ id: "done", satisfied: true, expression: { kind: "unknown", text: "not used" } }] }).modelOptimal).toBe(false);
+  });
 });

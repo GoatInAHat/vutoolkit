@@ -32,6 +32,7 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 | `setup.enroll` | native | native | native |
 | `setup.identity` | native | native | native |
 | `setup.prepare` | native | native | native |
+| `setup.run` | native | native | native |
 | `setup.status` | native | native | native |
 | `web` | native | native | native |
 

@@ -2,7 +2,7 @@
   "id": "vutoolkit",
   "name": "Vutoolkit",
   "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "configSchema": {
     "type": "object",
     "properties": {},
@@ -36,6 +36,7 @@
       "vutoolkit_setup_enroll",
       "vutoolkit_setup_identity",
       "vutoolkit_setup_prepare",
+      "vutoolkit_setup_run",
       "vutoolkit_setup_status",
       "vutoolkit_web"
     ]

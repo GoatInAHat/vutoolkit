@@ -53,7 +53,7 @@ These checks allow healthy session reuse. This run does **not** independently pr
 | Directed prerequisite graph and alternative ranking | `planner.graph`; recursive catalog exploration in the D3 UI; completed/planned courses and explicit preference weights | Deterministic AND/OR, shared-credit, cycle, unknown-data, and truncation behavior unit-tested. A real OR expression is checked live. This is **not** a complete global degree-completion optimizer. |
 | Course/professor/time/location metadata | Live course/section adapters and public professor lookup | A real course, section set, and professor lookup verified. Namesake ambiguity remains explicit. |
 | Browser scheduler replacing VandyScheduler | Conflict-free combinations, multiple meetings, lecture/lab groups, TBA warnings, excluded courses/sections, persistent free-time preferences, bulk cart controls, RMP links, schedule selection | Algorithms unit-tested. Real cart mutation and enrollment are not exercised by the read-only live suite. See the browser evidence section below. |
-| Guided setup issuing and securely storing a passkey | `setup.identity`, `setup.status`, `setup.prepare`, `setup.enroll`; setup panel | Status and the real enrollment page verified live; enrollment/vault acknowledgement and consent logic use synthetic tests. **Issuing a new live key remains unverified.** Existing keys are never overwritten to make a test pass. |
+| Guided setup issuing and securely storing a passkey | `setup.identity`, `setup.status`, `setup.prepare`, `setup.enroll`; setup panel | Recovery-safe flow stages and reads back a fresh key, waits for OneVU enrollment acknowledgement and configured-identity match, preserves an older key in the host vault, then promotes. Synthetic regression tests cover preservation, wrong-account/unavailable-browser gates, and incomplete vault confirmation. The OpenClaw Browser panel provides interaction with the same `openclaw` managed profile. **Issuing a new live key and the user's panel handoff remain unverified.** The final `sessions.ensure` result distinguishes fresh sign-in from cached-session reuse. |
 | Library, CLI, MCP, OpenClaw, web, and extension surfaces | One operation canon plus Tool Factory generated host surfaces | Generated exposure is separate from live behavior. Refer to release gates and browser evidence; not every operation has a live test through every host. |
 
 ## Browser evidence and VandyScheduler parity
@@ -84,3 +84,11 @@ The implementation covers these requested categories, but **100% live behavioral
 - **Distribution and installations:** publication receipts, npm trusted-publisher configuration, and each host's loaded version are release/deployment checks, not implied by the source tests. See [RELEASING.md](RELEASING.md).
 
 No passkey enrollment, academic write, cart change, Graph mutation, or email send is required by the read-only release suite.
+
+## 0.4.0 deterministic setup acceptance
+
+`setup.run` replaces LLM-driven first-time login with a bounded deterministic flow. Identity and optional password resolve from the account's own host vault; no credential arguments are accepted. Existing-browser reuse, explicit rejected-key recovery, no-interaction mode, pending-key protection, identity mismatch, vault readback, partial Microsoft readiness, and named errors are regression-tested. Browser selection honors explicit endpoints and compatible profiles.
+
+Live account enrollment and installed-version receipts are recorded separately in the release verification report; fixture success alone is not live enrollment proof. No real cart or enrollment changes are part of this release's read-only academic checks.
+
+On 2026-09-27, v0.4.0 passed 178 unit tests, 28 surface validators, the production synthetic browser checks (including exactly one setup operation from the Connect action), and all 13 read-only live tests. `setup.run({confirm:true,allowInteractiveVerification:false})` on the existing release account returned `ready`, verified a real isolated passkey assertion, and established both Vanderbilt and Microsoft sessions. This is existing-key acceptance, not new-key enrollment proof.

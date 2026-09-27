@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 type Obj = Record<string, any>
-type Node = d3.SimulationNodeDatum & { id: string; label: string; kind: string; state: string; description?: string; course?: Obj; metadata?: Obj; reportSequence?: number; entrySequence?: number; hasPossibleCourses?: boolean; rank?: number }
-type Graph = { nodes: Node[]; edges: { source: string; target: string; relation: string; weight?: number }[]; note?: string; ranking?: string; alternatives?: Obj[]; truncated?: boolean }
+type Node = d3.SimulationNodeDatum & { id: string; label: string; kind: string; state: string; description?: string; course?: Obj; metadata?: Obj; reportSequence?: number; entrySequence?: number; hasPossibleCourses?: boolean; coursesNeeded?: number; unitsNeeded?: number; rank?: number }
+type Graph = { nodes: Node[]; edges: { source: string; target: string; relation: string; weight?: number }[]; note?: string; ranking?: string; rankingScope?: string; modelOptimal?: boolean; alternatives?: Obj[]; truncated?: boolean }
 export type RunOperation = (name: string, args: Obj) => Promise<any>
 const courseIdentity = (course: Obj) => ({
   id: String(course.metadata?.courseId ?? course.courseId ?? course.id),
@@ -50,11 +50,8 @@ export function PlannerPage({ run }: { run: RunOperation }) {
   const execute = async (label: string, work: () => Promise<void>) => { setBusy(label); setError(""); try { await work() } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { setBusy("") } }
   const select = useCallback((node: Node) => { setSelected(node); setOptions([]); setMetadata(null); setSections(null); setProfessors({}); setOptionSearch("") }, [])
   const load = () => execute("Loading your official audit…", async () => { const result = await run("degree.graph", {}); setGraph(result); setOfficial(result); if (result.nodes[0]) select(result.nodes[0]); else setSelected(null) })
-  const prerequisiteMap = (course: Obj) => execute("Following prerequisite alternatives…", async () => {
-    const goal = courseIdentity(course)
-    const pending = [goal]
-    const identities = new Map<string, Obj>()
-    const seen = new Set<string>(), all: Obj[] = []
+  const collectCatalog = async (roots: Obj[]) => {
+    const pending = [...roots], seen = new Set<string>(), all: Obj[] = [], identities = new Map<string, Obj>()
     while (pending.length) {
       const item = pending.shift()!; if (seen.has(item.course)) continue; seen.add(item.course)
       setBusy(`Reading prerequisites: ${seen.size} courses…`)
@@ -68,12 +65,45 @@ export function PlannerPage({ run }: { run: RunOperation }) {
       for (const code of references) if (!seen.has(code) && !pending.some((c) => c.course === code)) {
         const found = await run("courses.search", { keywords: code })
         const match = found.courses.find((c: Obj) => c.course === code)
-        if (match) pending.push(match)
+        if (match) pending.push(courseIdentity(match))
       }
     }
+    return { all, identities }
+  }
+  const prerequisiteMap = (course: Obj) => execute("Following prerequisite alternatives…", async () => {
+    const goal = courseIdentity(course)
+    const { all, identities } = await collectCatalog([goal])
     const completed = official?.nodes.filter((n) => n.state === "completed").map((n) => n.label) ?? []
     const planned = official?.nodes.filter((n) => n.state === "planned").map((n) => n.label) ?? []
     const result = await run("planner.graph", { courses: all, completed, planned, goals: [goal.course] })
+    setGraph({ ...result, nodes: result.nodes.map((node: Node) => ({ ...node, metadata: identities.get(node.label) })) }); setSelected(null); setOptions([]); setMetadata(null); setSections(null); setProfessors({})
+  })
+  const rankOfficialRequirements = () => execute("Reading official requirement alternatives…", async () => {
+    if (!official) return
+    // Child audit rows point to their structural parent. Only leaf rows are
+    // independent constraints; including an unsatisfied group plus its lines
+    // would incorrectly turn one official choice into two required choices.
+    const structuralChildren = new Set(official.edges.filter((edge) => edge.relation === "official-requirement").map((edge) => String(edge.target)))
+    const lines = official.nodes.filter((node) => node.state === "needed" && (node.kind === "line" || !structuralChildren.has(node.id)) && node.kind !== "course")
+    if (!lines.length) throw new Error("The audit has no unsatisfied leaf requirements to rank.")
+    const requirements: Obj[] = [], roots: Obj[] = []
+    for (const line of lines) {
+      setBusy(`Reading official alternatives: ${requirements.length + 1} of ${lines.length} requirements…`)
+      if (line.kind !== "line" || !line.hasPossibleCourses || line.reportSequence === undefined || line.entrySequence === undefined || line.coursesNeeded !== 1 || line.unitsNeeded !== undefined) {
+        requirements.push({ id: line.id, label: line.label, expression: { kind: "unknown", text: `Official requirement needs a constraint this planner cannot safely translate: ${line.label}` } })
+        continue
+      }
+      try {
+        const choices = (await run("degree.options", { reportSequence: line.reportSequence, entrySequence: line.entrySequence })).courses as Obj[]
+        const usable = choices.filter((choice) => !choice.wildcard && choice.courseId && /^\S+\s+\d/.test(String(choice.displayName))).map(courseIdentity)
+        if (!usable.length || usable.length !== choices.length) requirements.push({ id: line.id, label: line.label, expression: { kind: "unknown", text: `Official alternatives include a wildcard or an unrecognized course for: ${line.label}` } })
+        else { roots.push(...usable); requirements.push({ id: line.id, label: line.label, expression: { kind: "any", items: usable.map((choice) => ({ kind: "course", course: choice.course })) } }) }
+      } catch (e) { requirements.push({ id: line.id, label: line.label, expression: { kind: "unknown", text: `Could not retrieve official alternatives for ${line.label}: ${e instanceof Error ? e.message : String(e)}` } }) }
+    }
+    const { all, identities } = await collectCatalog(roots)
+    const completed = official.nodes.filter((node) => node.state === "completed").map((node) => node.label)
+    const planned = official.nodes.filter((node) => node.state === "planned").map((node) => node.label)
+    const result = await run("planner.graph", { courses: all, completed, planned, requirements })
     setGraph({ ...result, nodes: result.nodes.map((node: Node) => ({ ...node, metadata: identities.get(node.label) })) }); setSelected(null); setOptions([]); setMetadata(null); setSections(null); setProfessors({})
   })
   const expandOptions = (node: Node) => execute("Loading official alternatives…", async () => {
@@ -98,15 +128,15 @@ export function PlannerPage({ run }: { run: RunOperation }) {
     setProfessors({})
   })
   return <div className="flex flex-col gap-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">Your path through Vanderbilt</h2><p className="text-sm text-muted-foreground">Official degree requirements, your planner, and every discovered prerequisite branch.</p></div><Button onClick={load} disabled={!!busy}>{official ? "Refresh audit" : "Load my degree audit"}</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-semibold">Your path through Vanderbilt</h2><p className="text-sm text-muted-foreground">Official degree requirements, your planner, and every discovered prerequisite branch.</p></div><div className="flex gap-2"><Button variant="outline" onClick={rankOfficialRequirements} disabled={!official || !!busy}>Rank official requirement paths</Button><Button onClick={load} disabled={!!busy}>{official ? "Refresh audit" : "Load my degree audit"}</Button></div></div>
     {busy && <p role="status" className="text-sm">{busy}</p>}{error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); execute("Searching the catalog…", async () => setCourseResults((await run("courses.search", { keywords: courseSearch })).courses)) }}><Input aria-label="Search official course catalog" value={courseSearch} onChange={(e) => setCourseSearch(e.target.value)} placeholder="Explore a course, e.g. CS 3251" /><Button type="submit" variant="secondary" disabled={!!busy || courseSearch.length < 3}>Find courses</Button></form>
     {courseResults.length > 0 && <div className="flex flex-wrap gap-2">{courseResults.map((c) => <Button key={c.id} variant="outline" disabled={!!busy} onClick={() => prerequisiteMap(c)}>{c.course} · {c.title}</Button>)}</div>}
     {graph ? <>
       <div className="flex flex-wrap items-center gap-3 text-xs">{[["#15803d", "Satisfied / completed"], ["#2563eb", "Planned"], ["#d97706", "Still needed"], ["#64748b", "Unverified"], ["#facc15", "Lowest-cost path"]].map(([color, label]) => <span key={label} className="flex items-center gap-1"><span style={{ background: color }} className="inline-block size-3 rounded-full" />{label}</span>)}{graph !== official && official && <Button size="sm" variant="outline" onClick={() => { setGraph(official); setSelected(null); setOptions([]); setMetadata(null); setSections(null); setProfessors({}) }}>Back to official audit</Button>}</div>
       <DegreeCanvas graph={graph} onSelect={select} />
-      <p className="text-xs text-muted-foreground">{graph.note ?? graph.ranking} {graph.truncated ? "Path enumeration is truncated; the displayed ranking is not globally optimal." : ""}</p>
-      {graph.alternatives && <Card><CardHeader><CardTitle>Ranked prerequisite paths</CardTitle><CardDescription>Shared prerequisites count once. Expand a path to see its course set.</CardDescription></CardHeader><CardContent>{graph.alternatives.slice(0, 20).map((p, i) => <details key={i} className="border-b py-2"><summary>Path {i + 1} · {p.creditsComplete ? `${p.credits} credits` : "credits incomplete"} · {p.unresolved.length ? `${p.unresolved.length} unverified requirements` : "prerequisites mapped"}</summary><p className="py-2 text-sm">{p.courses.join(", ")}</p>{p.unresolved.map((x: string) => <p key={x} className="text-xs text-amber-700">{x}</p>)}</details>)}{graph.alternatives.length > 20 && <p className="text-xs">Showing 20 of {graph.alternatives.length} paths; the full result is available through planner.graph.</p>}</CardContent></Card>}
+      <p className="text-xs text-muted-foreground">{graph.note ?? graph.ranking} {graph.rankingScope ? `Scope: ${graph.rankingScope}.` : ""} {graph.modelOptimal ? "The ranking is exhaustive for this supplied model, not an official completion determination." : ""} {graph.truncated ? "Path enumeration is truncated; the displayed ranking is not globally optimal." : ""}</p>
+      {graph.alternatives && <Card><CardHeader><CardTitle>Ranked prerequisite paths</CardTitle><CardDescription>Shared prerequisites count once. Expand a path to see additional and already planned courses separately.</CardDescription></CardHeader><CardContent>{graph.alternatives.slice(0, 20).map((p, i) => <details key={i} className="border-b py-2"><summary>Path {i + 1} · {p.creditsComplete ? `${p.credits} additional credits` : "credits incomplete"} · {p.unresolved.length ? `${p.unresolved.length} unverified requirements` : "prerequisites mapped"}</summary><p className="py-2 text-sm">Additional: {p.courses.join(", ") || "none"}</p>{Array.isArray(p.plannedCourses) && <p className="pb-2 text-sm">Already planned: {p.plannedCourses.join(", ") || "none"}</p>}{p.unresolved.map((x: string) => <p key={x} className="text-xs text-amber-700">{x}</p>)}</details>)}{graph.alternatives.length > 20 && <p className="text-xs">Showing 20 of {graph.alternatives.length} paths; the full result is available through planner.graph.</p>}</CardContent></Card>}
       <div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Explore requirements</CardTitle><Input aria-label="Filter graph nodes" placeholder="Find a course or requirement" value={search} onChange={(e) => setSearch(e.target.value)} /></CardHeader><CardContent className="max-h-80 overflow-auto">{graph.nodes.filter((n) => `${n.label} ${n.description}`.toLowerCase().includes(search.toLowerCase())).map((n) => <button className="flex w-full items-center justify-between border-b py-2 text-left text-sm" key={n.id} onClick={() => select(n)}><span>{n.label}</span><Badge variant="outline">{n.state}</Badge></button>)}</CardContent></Card>
       <Card><CardHeader><CardTitle>{selected?.label ?? "Select a node"}</CardTitle><CardDescription>{selected?.description ?? selected?.course?.description ?? "Drag to rearrange the graph. Use scroll to zoom, or select from the accessible list."}</CardDescription></CardHeader><CardContent className="flex flex-col gap-3">{selected && <><Badge variant="outline">{selected.state}</Badge>{selected.hasPossibleCourses && <Button disabled={!!busy} onClick={() => expandOptions(selected)}>Show official course alternatives</Button>}{selected.metadata?.courseId && <><Button variant="outline" disabled={!!busy} onClick={() => execute("Reading course metadata…", async () => setMetadata(await run("courses.detail", { id: String(selected.metadata!.courseId), offerNumber: Number(selected.metadata!.offerNumber ?? 1) })))}>Official course details</Button><Button variant="outline" disabled={!!busy} onClick={() => prerequisiteMap(selected)}>Map all prerequisites</Button><Button variant="outline" disabled={!!busy} onClick={() => showSections(selected)}>Current sections & professors</Button></>}{metadata && <div className="text-sm"><p>{metadata.description}</p><p className="mt-2 font-medium">Prerequisites: {metadata.prerequisiteText ?? "Not verified from the source"}</p></div>}{sections !== null && <div className="space-y-3 text-sm"><h3 className="font-medium">Current section offerings</h3>{!sections.length && <p>No sections returned for the current YES term.</p>}{sections.map((section) => <div key={section.id} className="rounded border p-3"><p className="font-medium">{section.course}-{section.section} · {section.component} · {section.credits} credits</p><p className="text-xs text-muted-foreground">{section.termCode ? `Term ${section.termCode} · ` : ""}{section.availability}</p>{section.meetings.map((meeting: Obj, index: number) => <p key={index}>{meeting.days.join("")} {clock(meeting.start)}–{clock(meeting.end)} · {meeting.location || "Room TBA"}</p>)}{section.timeUnknown && <p>Time TBA: conflicts cannot be verified.</p>}{(section.instructors ?? []).map((name: string) => <div key={name} className="mt-2"><span>{name} </span>{!/^(staff|tba)$/i.test(name) && <Button size="sm" variant="outline" disabled={!!busy} onClick={() => execute("Looking up public professor ratings…", async () => { const result = await run("professors.search", { name }); setProfessors((current) => ({ ...current, [name]: result })) })}>Professor ratings</Button>}{professors[name] && <div className="mt-2 text-xs"><p>{professors[name].note}</p>{!professors[name].professors.length && <p>No matching public ratings.</p>}{professors[name].professors.map((professor: Obj) => <p key={professor.id}><a className="underline" href={professor.url} target="_blank" rel="noopener noreferrer">{professor.name}</a> · {professor.department} · {professor.count ? `${professor.rating}/5 (${professor.count} ratings)` : "Not rated"} · difficulty {professor.difficulty}/5{professor.wouldTakeAgainPercent >= 0 ? ` · ${professor.wouldTakeAgainPercent}% would take again` : ""}{!professor.exactNameMatch && " · Verify this match"}</p>)}</div>}</div>)}</div>)}</div>}{options.length > 0 && <><p className="text-sm">{options.length.toLocaleString()} official alternatives, also added to the graph.</p><Input aria-label="Filter official alternatives" placeholder="Filter official alternatives" value={optionSearch} onChange={(event) => setOptionSearch(event.target.value)} /><div className="max-h-72 overflow-auto">{options.filter((c) => `${c.displayName} ${c.longTitle}`.toLowerCase().includes(optionSearch.toLowerCase())).slice(0, 100).map((c, i) => <p key={`${c.courseId}:${i}`} className="border-b py-2 text-sm">{c.displayName} · {c.longTitle ?? c.title}{c.wildcard && <Badge variant="outline">Wildcard</Badge>}</p>)}</div></>}</>}</CardContent></Card></div>
     </> : <Card><CardHeader><CardTitle>Start with Vanderbilt's own requirements</CardTitle><CardDescription>Load your official audit to see what is complete, what is left, and the courses already in your planner. No enrollment or planner changes are made.</CardDescription></CardHeader></Card>}

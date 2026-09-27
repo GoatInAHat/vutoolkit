@@ -20,7 +20,7 @@
 import { execFileSync } from "node:child_process";
 import { harvestToStoredSession, type CookieRecord, type FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
-import { cdpReachable } from "./cdp-driver.js";
+import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
 import { probeSession, type LivenessProbe } from "./liveness.js";
@@ -30,7 +30,6 @@ export type Ceremony = typeof runSsoCeremony;
 
 /** A session minted this recently is trusted without a liveness round-trip. */
 const PROBE_SKIP_MS = 120_000;
-const DEFAULT_CDP_URL = "http://127.0.0.1:18800";
 /** One ensure call, including a browser start, the federation hop, and one retry. */
 const ENSURE_DEADLINE_MS = 6 * 60_000;
 const RETRY_DELAY_MS = 3_000;
@@ -113,31 +112,12 @@ export function defaultSecretsRead(name: string): string {
   return value;
 }
 
-/**
- * Make the managed browser reachable before a ceremony drives it: a Gateway restart kills it, and
- * a ceremony against a closed CDP port would otherwise fail with a bare socket error. The start
- * command pins the "openclaw" profile and headless mode rather than inheriting config defaults:
- * the default profile can be node-auto-routed (a zero-config browser proxy once aimed it at a
- * Mac, launching Chrome there while this code polls local CDP). The cdpReachable poll, not the
- * command's exit code, stays the source of truth for readiness.
- */
-export async function defaultEnsureBrowser(cdpUrl: string): Promise<void> {
-  if (await cdpReachable(cdpUrl)) return;
-  try {
-    execFileSync("openclaw", ["browser", "--browser-profile", "openclaw", "start", "--headless"], { timeout: 45_000, stdio: "ignore" });
-  } catch {
-    // The poll below, not the command's exit code, is the real signal: the browser can come up
-    // while the command reports a failure.
-  }
-  for (let i = 0; i < 20; i++) {
-    if (await cdpReachable(cdpUrl)) return;
-    await sleep(1500);
-  }
-  throw new AuthError(
-    "BROWSER_UNAVAILABLE",
-    `the managed browser is not reachable at ${cdpUrl} and did not start; check \`openclaw browser status\``,
-    { retryable: true },
-  );
+/** Compatibility wrapper for callers with an already-selected endpoint. */
+export async function defaultEnsureBrowser(cdpUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const selected = resolveBrowser(env);
+  // A caller-provided endpoint is authoritative even when host defaults have changed.
+  const sameEndpoint = new URL(selected.cdpUrl).href === new URL(cdpUrl).href;
+  await ensureBrowser(sameEndpoint ? selected : { cdpUrl, source: "endpoint", canStart: false });
 }
 
 /**
@@ -210,7 +190,8 @@ function isPermanent(error: unknown): boolean {
 async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promise<EnsureResult> {
   const env = deps.env ?? process.env;
   const secretsRead = deps.secretsRead ?? defaultSecretsRead;
-  const cdpUrl = env.VUTOOLKIT_CDP_URL || DEFAULT_CDP_URL;
+  const browser = resolveBrowser(env);
+  const cdpUrl = browser.cdpUrl;
   // Secrets are read lazily and at most once: the Microsoft carry needs the passkey only when
   // federation sends it through OneVU sign-in.
   let email: string | undefined;
@@ -226,7 +207,8 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
   const attempt = async (n: number): Promise<EnsureResult> => {
     const started = Date.now();
     try {
-      await (deps.ensureBrowser ?? defaultEnsureBrowser)(cdpUrl);
+      if (deps.ensureBrowser) await deps.ensureBrowser(cdpUrl);
+      else await ensureBrowser(browser);
       trace(`attempt ${n} browser ready`, started);
       const result = await (idp === "microsoft" ? mintMicrosoft(ctx) : mintVanderbilt(ctx));
       trace(`attempt ${n} minted`, started);

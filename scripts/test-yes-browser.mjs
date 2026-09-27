@@ -80,7 +80,8 @@ try {
 
   const web = await browser.newPage(); web.on('pageerror', (e) => failures.push(e.message));
   const calls = [];
-  const audit = { nodes: [{ id: 'requirement:1', kind: 'line', label: 'Synthetic requirement', state: 'needed', hasPossibleCourses: true, reportSequence: 1, entrySequence: 2 }, { id: 'course:123', kind: 'course', label: 'CS 2201', state: 'planned', metadata: { courseId: 123, offerNumber: 1 } }], edges: [], note: 'Synthetic official audit' };
+  let identityConfigured = false;
+  const audit = { nodes: [{ id: 'requirement:1', kind: 'line', label: 'Synthetic requirement', state: 'needed', hasPossibleCourses: true, coursesNeeded: 1, reportSequence: 1, entrySequence: 2 }, { id: 'course:123', kind: 'course', label: 'CS 2201', state: 'planned', metadata: { courseId: 123, offerNumber: 1 } }], edges: [], note: 'Synthetic official audit' };
   const responses = {
     'degree.graph': () => audit,
     'degree.options': () => ({ courses: [{ courseId: '456', displayName: 'CS 1101', longTitle: 'Introductory Programming' }] }),
@@ -88,7 +89,9 @@ try {
     'courses.sections': () => ({ sections: [{ id: '789', course: 'CS 2201', section: '01', component: 'Lecture', credits: 3, instructors: ['Example Professor'], meetings: [{ days: ['M'], start: 600, end: 660, location: 'Synthetic Room' }] }] }),
     'professors.search': () => ({ professors: [{ id: '42', name: 'Example Professor', rating: 4.5, count: 20, difficulty: 3, wouldTakeAgainPercent: 80, exactNameMatch: true, url: 'https://www.ratemyprofessors.com/professor/42' }], note: 'Student-contributed ratings; verify professor identity.' }),
     'planner.graph': (args) => buildDegreeGraph(args),
-    'setup.status': () => ({ identityConfigured: false, passkeyConfigured: false, nextStep: 'Save your Vanderbilt account identity.' }),
+    'setup.status': () => ({ identityConfigured, passkeyConfigured: false, nextStep: identityConfigured ? 'Prepare OneVU sign-in.' : 'Save your Vanderbilt account identity.' }),
+    'setup.identity': () => { identityConfigured = true; return { identityConfigured: true }; },
+    'setup.run': () => ({ status: 'ready', passkey: 'enrolled', passkeyAssertion: 'verified', vanderbiltSession: 'ready', microsoftSession: 'ready', verificationRequired: false }),
   };
   await web.route('https://vutoolkit.test/**', async (route) => {
     const url = new URL(route.request().url());
@@ -120,10 +123,23 @@ try {
   assert.ok(calls.some((call) => call.name === 'courses.detail' && call.arguments.id === '123'), 'Official numeric course ID passed');
   await web.getByRole('button', { name: 'CS 2201 planned', exact: true }).click();
   await web.getByRole('button', { name: 'Official course details', exact: true }).waitFor();
+  const rankOfficial = web.getByRole('button', { name: 'Rank official requirement paths', exact: true });
+  await rankOfficial.click();
+  await web.getByText('Scope: supplied official requirement alternatives, explicit goals, and planned courses.', { exact: false }).waitFor();
+  const officialRank = calls.find((call) => call.name === 'planner.graph' && Array.isArray(call.arguments.requirements));
+  assert.deepEqual(officialRank?.arguments.requirements, [{ id: 'requirement:1', label: 'Synthetic requirement', expression: { kind: 'any', items: [{ kind: 'course', course: 'CS 1101' }] } }], 'Official leaf alternatives reach planner.graph without raw JSON');
+  assert.ok(calls.some((call) => call.name === 'courses.detail' && call.arguments.id === '456'), 'Official alternative metadata is loaded before ranking');
   await web.getByRole('button', { name: 'Connect Vanderbilt', exact: true }).click();
-  await web.getByRole('button', { name: 'Check setup', exact: true }).click();
-  await web.getByText('Save your Vanderbilt account identity.', { exact: true }).waitFor();
-  assert.equal(await web.getByRole('button', { name: 'Create toolkit passkey', exact: true }).isDisabled(), true, 'Passkey creation requires identity and consent');
+  await web.getByLabel('Vanderbilt email or VUnetID', { exact: true }).fill('synthetic@vanderbilt.edu');
+  await web.getByRole('button', { name: 'Save account', exact: true }).click();
+  const createPasskey = web.getByRole('button', { name: 'Connect account', exact: true });
+  await createPasskey.waitFor({ timeout: 5_000 });
+  assert.equal(await createPasskey.isDisabled(), true, 'Passkey creation requires identity and consent');
+  await web.getByLabel('I authorize connecting this account and adding a toolkit passkey if needed.').check();
+  await createPasskey.click();
+  await web.getByText('Connection verified', { exact: true }).waitFor();
+  assert.equal(calls.filter(c => c.name === 'setup.run').length, 1, 'One deterministic setup call');
+  assert.equal(calls.filter(c => ['setup.prepare', 'setup.enroll', 'sessions.ensure'].includes(c.name)).length, 0, 'UI does not orchestrate login steps');
   console.log('PASS production web: audit, accessible directed graph, official alternative expansion, numeric course metadata, section/professor ratings, prerequisite paths, setup consent gating (isolated fixtures).');
   await web.close();
 

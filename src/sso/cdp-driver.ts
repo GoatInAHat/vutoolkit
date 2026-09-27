@@ -34,16 +34,20 @@ export async function withCdpTab<T>(
   cdpUrl: string,
   startUrl: string,
   fn: (tab: CdpTab) => Promise<T>,
-  options: { keepOpen?: boolean } = {},
+  options: { keepOpen?: boolean; isolated?: boolean } = {},
 ): Promise<T> {
   augmentNoProxy();
-  const blank = await fetch(new URL("/json/new?" + startUrl, cdpUrl), {
-    method: "PUT",
+  const response = await fetch(new URL(options.isolated ? "/json/version" : "/json/new?" + startUrl, cdpUrl), {
+    method: options.isolated ? "GET" : "PUT",
     signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
   });
-  if (!blank.ok) throw new Error("ceremony could not open a tab (HTTP " + blank.status + ")");
-  const tab = (await blank.json()) as { id: string; webSocketDebuggerUrl: string };
-  const ws = new WebSocket(tab.webSocketDebuggerUrl);
+  if (!response.ok) throw new Error("ceremony could not open a CDP connection (HTTP " + response.status + ")");
+  const discovered = (await response.json()) as { id?: string; webSocketDebuggerUrl: string };
+  let tabId = discovered.id;
+  let browserContextId: string | undefined;
+  let sessionId: string | undefined;
+  const ws = new WebSocket(discovered.webSocketDebuggerUrl);
+  let browserSend: CdpTab["send"] | undefined;
   const pending = new Map<number, { settle: (m: { id?: number; error?: unknown; result?: unknown }) => void; fail: (e: Error) => void }>();
   const failAll = (reason: string): void => {
     for (const entry of pending.values()) entry.fail(new Error(reason));
@@ -67,7 +71,7 @@ export async function withCdpTab<T>(
         }
       } catch { /* non-JSON frames are events; ignored */ }
     };
-    const send = <R = unknown>(method: string, params: Record<string, unknown> = {}): Promise<R> =>
+    const request = <R = unknown>(method: string, params: Record<string, unknown> = {}, targetSessionId?: string): Promise<R> =>
       new Promise((res, rej) => {
         const id = ++mid;
         const timer = setTimeout(() => {
@@ -83,13 +87,27 @@ export async function withCdpTab<T>(
           fail: (e) => { clearTimeout(timer); rej(e); },
         });
         try {
-          ws.send(JSON.stringify({ id, method, params }));
+          ws.send(JSON.stringify({ id, method, params, ...(targetSessionId ? { sessionId: targetSessionId } : {}) }));
         } catch {
           clearTimeout(timer);
           pending.delete(id);
           rej(new Error("ceremony: " + method + " could not be sent"));
         }
       });
+    browserSend = <R = unknown>(method: string, params: Record<string, unknown> = {}) => request<R>(method, params);
+    if (options.isolated) {
+      const context = await request<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: true });
+      browserContextId = context.browserContextId;
+      const target = await request<{ targetId: string }>("Target.createTarget", { url: startUrl, browserContextId });
+      tabId = target.targetId;
+      const attached = await request<{ sessionId: string }>("Target.attachToTarget", { targetId: tabId, flatten: true });
+      sessionId = attached.sessionId;
+    }
+    const send: CdpTab["send"] = <R = unknown>(method: string, params: Record<string, unknown> = {}) => {
+      // Storage.getCookies on a browser-level connection otherwise reads the default profile.
+      if (browserContextId && method === "Storage.getCookies") return request<R>(method, { ...params, browserContextId });
+      return request<R>(method, params, sessionId);
+    };
     const evaluate = async (expression: string): Promise<unknown> => {
       const r = await send<{ result?: { value?: unknown } }>("Runtime.evaluate", {
         expression,
@@ -98,13 +116,18 @@ export async function withCdpTab<T>(
       });
       return r.result?.value;
     };
-    return await fn({ send, evaluate, tabId: tab.id });
+    if (!tabId) throw new Error("ceremony CDP target was not created");
+    return await fn({ send, evaluate, tabId });
   } finally {
+    // Isolated proof contexts never survive, including keepOpen and failed assertions.
+    if (browserContextId && browserSend) {
+      await browserSend("Target.disposeBrowserContext", { browserContextId }).catch(() => {});
+    }
     ws.onclose = null;
     failAll("ceremony finished");
     ws.close();
     try {
-      if (!options.keepOpen) await fetch(new URL("/json/close/" + tab.id, cdpUrl), { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+      if (!options.isolated && !options.keepOpen && tabId) await fetch(new URL("/json/close/" + tabId, cdpUrl), { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
     } catch { /* tab cleanup best-effort */ }
   }
 }
@@ -114,7 +137,11 @@ export async function cdpReachable(cdpUrl: string, timeoutMs = 2500): Promise<bo
   augmentNoProxy();
   try {
     const res = await fetch(new URL("/json/version", cdpUrl), { signal: AbortSignal.timeout(timeoutMs) });
-    return res.ok;
+    if (!res.ok) return false;
+    const info = await res.json() as Record<string, unknown>;
+    if (typeof info["Protocol-Version"] !== "string" || typeof info.webSocketDebuggerUrl !== "string") return false;
+    const socket = new URL(info.webSocketDebuggerUrl);
+    return socket.protocol === "ws:" || socket.protocol === "wss:";
   } catch {
     return false;
   }

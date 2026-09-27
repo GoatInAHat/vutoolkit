@@ -64,7 +64,7 @@ try {
   }
   console.log(`PASS the popup renders the ${CASE.name} form`);
 
-  await popup.getByRole("button", { name: "Run" }).click();
+  await popup.getByRole("button", { name: "Run", exact: true }).click();
   await popup.getByRole("tab", { name: "Result" }).click();
   const result = popup.locator('pre[data-slot="result"]');
   await result.waitFor({ state: "visible" });

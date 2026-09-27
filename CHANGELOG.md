@@ -2,7 +2,15 @@
 
 Notable user-facing changes are recorded here. Published versions and artifacts are listed in [GitHub Releases](https://github.com/GoatInAHat/vutoolkit/releases).
 
-## Unreleased — 0.3.0
+## 0.4.0
+
+- Deterministic `setup.run`: reuse browser authentication, automate configured identity/password steps, enroll and vault a toolkit passkey, and return actionable prerequisite errors.
+- Explicit non-interactive mode for reusing an account session without submitting password or verification controls; server-required step-up is returned as an actionable error.
+- Browser profile selection follows compatible host defaults or explicit endpoints; recovery never starts an unrelated browser for a custom endpoint.
+- One-action setup panel and recovery-safe account matching, credential staging, and previous-key preservation.
+- Official requirement-path ranking and clearer incomplete-search reporting.
+
+## 0.3.0 (release candidate)
 
 ### Added
 

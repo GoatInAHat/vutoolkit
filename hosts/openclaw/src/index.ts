@@ -359,7 +359,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "vutoolkit_planner_graph",
-      description: "Deterministic AND/OR prerequisite graph and ranked alternative paths for supplied course metadata. Shared prerequisites count once. Completed/planned courses and weighted goals are supported. Unknown prose, missing metadata, cycles and search truncation remain explicit; degree.audit is the official degree authority.",
+      description: "Deterministically rank paths for supplied official requirement alternatives and/or course goals. Shared prerequisites count once; completed and planned work is factored in. Unknown prose, missing metadata, cycles and truncation remain explicit. A model-optimal result is exhaustive only for supplied inputs; degree.audit remains the official authority.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
@@ -443,6 +443,31 @@ const entry = defineToolPlugin({
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string"
+                },
+                "expression": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "satisfied": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "expression"
+              ]
             }
           },
           "preferences": {
@@ -1094,13 +1119,18 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "vutoolkit_setup_enroll",
-      description: "Explicitly issue a toolkit passkey through OneVU's actual security-method enrollment and store it directly in the host vault. Requires an authenticated managed browser and confirm=true. Refuses to replace an existing toolkit passkey; never revokes account credentials. This changes account security; run only after the account owner's explicit request. Returns metadata, never key material.",
+      description: "Issue a toolkit passkey through OneVU's security-method enrollment. Requires authenticated managed-browser sign-in and explicit account-holder confirmation. For recovery only, replaceExisting=true stages and vault-verifies the newly issued credential, preserves the prior key in VANDERBILT_PASSKEY_PREVIOUS, then promotes the new key; use only after the account holder reports the current toolkit key was rejected and confirms the browser is signed into their own configured account. Never accepts secrets in arguments or revokes OneVU passkeys. Returns metadata only.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
           "confirm": {
             "type": "boolean",
             "const": true
+          },
+          "replaceExisting": {
+            "default": false,
+            "description": "Recovery only: replace the toolkit's current vaulted key after OneVU issues and the host vault verifies a new one. Requires explicit account-holder confirmation.",
+            "type": "boolean"
           },
           "timeoutSeconds": {
             "default": 120,
@@ -1144,13 +1174,18 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "vutoolkit_setup_prepare",
-      description: "Prepare real OneVU self-service setup in a dedicated managed-browser tab. Inspect the security-method page and use an existing vaulted passkey for sign-in when available. Does not issue, replace or revoke any passkey. First-time users complete sign-in in the managed browser, never in chat.",
+      description: "Prepare a dedicated OneVU tab for the account holder to sign in. Normal setup may load the configured toolkit passkey; recovery=true deliberately does not load or retry the rejected key and requires the holder to use their usual sign-in method. Does not issue or change credentials. The visible page must match the configured student's email before enrollment.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
           "keepTab": {
             "default": true,
-            "description": "Keep the setup tab open for the user's first sign-in; false is for read-only diagnostics.",
+            "description": "Keep the dedicated OneVU tab open so the account holder can sign in.",
+            "type": "boolean"
+          },
+          "recovery": {
+            "default": false,
+            "description": "Recovery only: do not load/use the rejected toolkit passkey; allow the account holder to sign in through OneVU's normal flow.",
             "type": "boolean"
           }
         }
@@ -1162,8 +1197,46 @@ const entry = defineToolPlugin({
         }),
     }),
     tool({
+      name: "vutoolkit_setup_run",
+      description: "Deterministic one-call Vanderbilt setup or explicit passkey recovery. Uses this host's configured identity and optional vaulted VANDERBILT_PASSWORD, first reusing an authenticated browser session. On first-time setup it enrolls and vault-verifies a new OneVU passkey, then establishes Vanderbilt and Microsoft sessions. status=partial means Vanderbilt is ready but Microsoft is not; do not claim full setup. Existing valid keys are reused, never rotated. recovery=true skips a rejected key and preserves it as a vault backup. With allowInteractiveVerification=false, setup does not submit a password or click a verification factor; OneVU may still require step-up for enrollment. Returns no credentials. Typed errors tell the caller what prerequisite or one-time verification is missing.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "const": true,
+            "description": "Account-holder authorization to enroll a toolkit passkey if necessary."
+          },
+          "recovery": {
+            "default": false,
+            "description": "Only when the existing toolkit key was rejected by OneVU; preserve it and enroll a replacement.",
+            "type": "boolean"
+          },
+          "allowInteractiveVerification": {
+            "default": true,
+            "description": "False: use an existing signed-in browser session only; never submit a password or click a verification factor. OneVU may independently require step-up.",
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "default": 180,
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 300
+          }
+        },
+        "required": [
+          "confirm"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("setup.run").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
       name: "vutoolkit_setup_status",
-      description: "Check Vanderbilt account setup without returning credentials: configured identity, passkey validity, managed-browser availability and the next step. Existing passkeys are never replaced.",
+      description: "Check Vanderbilt account setup without returning credentials: configured identity, structural passkey validity, managed-browser availability and the next step. Structural validity does not prove OneVU accepts the key.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {}

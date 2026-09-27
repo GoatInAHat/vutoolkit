@@ -1,7 +1,11 @@
 /** Deterministic prerequisite graphs; ambiguous catalog prose is explicitly unresolved. */
 export type RequirementExpression = { kind: "course"; course: string } | { kind: "all" | "any"; items: RequirementExpression[] } | { kind: "unknown"; text: string };
 export interface PlannerCourse { course: string; title?: string; credits?: number; prerequisites?: RequirementExpression; description?: string; typicallyOffered?: string; instructors?: string[]; rating?: { average: number; count: number; url: string }; sourceUrl?: string }
-export interface PlannerRequest { courses: PlannerCourse[]; completed?: string[]; planned?: string[]; goals?: string[]; preferences?: Record<string, number>; maxAlternatives?: number }
+/** A requirement expression supplied from an official audit/option response.  The
+ * expression is deliberately data, rather than a guessed interpretation of an
+ * audit line: callers retain wildcards or ambiguous portions as `unknown`. */
+export interface PlannerRequirement { id: string; label?: string; expression: RequirementExpression; satisfied?: boolean }
+export interface PlannerRequest { courses: PlannerCourse[]; completed?: string[]; planned?: string[]; goals?: string[]; requirements?: PlannerRequirement[]; preferences?: Record<string, number>; maxAlternatives?: number }
 const normalize = (v: string) => v.trim().toUpperCase().replace(/\s*[- ]\s*(?=\d)/, " ").replace(/\s+/g, " ");
 /** Full course codes, parentheses, AND/OR, and unambiguous Oxford lists only. */
 export function parsePrerequisites(text: string): RequirementExpression {
@@ -25,12 +29,13 @@ export function parsePrerequisites(text: string): RequirementExpression {
   const any = (): RequirementExpression => { const items = [all()]; while (tokens[pos]?.toLowerCase() === "or") { pos++; items.push(all()); } return items.length === 1 ? items[0]! : { kind: "any", items }; };
   try { const result = any(); return pos === tokens.length ? result : { kind: "unknown", text }; } catch { return { kind: "unknown", text }; }
 }
-export interface PlannerNode { id: string; kind: "course" | "all" | "any" | "unknown"; label: string; state: "completed" | "planned" | "available" | "blocked" | "unknown"; course?: PlannerCourse; minimumAdditionalCredits?: number; rank?: number }
+export interface PlannerNode { id: string; kind: "course" | "requirement" | "all" | "any" | "unknown"; label: string; state: "completed" | "planned" | "available" | "blocked" | "unknown"; course?: PlannerCourse; minimumAdditionalCredits?: number; rank?: number }
 export function buildDegreeGraph(request: PlannerRequest) {
   const courses = new Map(request.courses.map((c) => [normalize(c.course), { ...c, course: normalize(c.course) }]));
   if (courses.size !== request.courses.length) throw new Error("Planner course codes must be unique");
   const completed = new Set((request.completed ?? []).map(normalize)), planned = new Set((request.planned ?? []).map(normalize));
   const preferences = Object.fromEntries(Object.entries(request.preferences ?? {}).map(([course, weight]) => [normalize(course), weight]));
+  if (Object.values(preferences).some((weight) => !Number.isFinite(weight))) throw new Error("Planner preference weights must be finite numbers");
   const limit = request.maxAlternatives ?? 10000;
   if (!Number.isInteger(limit) || limit < 1) throw new Error("maxAlternatives must be a positive integer");
   const nodes = new Map<string, PlannerNode>();
@@ -46,30 +51,30 @@ export function buildDegreeGraph(request: PlannerRequest) {
   };
   for (const [id, course] of courses) { addCourse(id); if (course.prerequisites) addExpression(course.prerequisites, id, id); }
   for (const id of [...(request.goals ?? []), ...planned, ...completed]) addCourse(id);
-  type Alternative = { courses: string[]; unresolved: string[] };
+  type Alternative = { courses: string[]; plannedCourses: string[]; unresolved: string[] };
   const unique = (rows: Alternative[]): Alternative[] => {
     const found = new Map<string, Alternative>();
-    for (const row of rows) { const normalized = { courses: [...new Set(row.courses)].sort(), unresolved: [...new Set(row.unresolved)].sort() }; found.set(JSON.stringify(normalized), normalized); if (found.size > limit) { truncated = true; break; } }
+    for (const row of rows) { const normalized = { courses: [...new Set(row.courses)].sort(), plannedCourses: [...new Set(row.plannedCourses)].sort(), unresolved: [...new Set(row.unresolved)].sort() }; found.set(JSON.stringify(normalized), normalized); if (found.size > limit) { truncated = true; break; } }
     return [...found.values()].slice(0, limit);
   };
-  const combine = (a: Alternative[], b: Alternative[]) => { const rows: Alternative[] = []; outer: for (const x of a) for (const y of b) { rows.push({ courses: [...x.courses, ...y.courses], unresolved: [...x.unresolved, ...y.unresolved] }); if (rows.length > limit) { truncated = true; break outer; } } return unique(rows); };
+  const combine = (a: Alternative[], b: Alternative[]) => { const rows: Alternative[] = []; outer: for (const x of a) for (const y of b) { rows.push({ courses: [...x.courses, ...y.courses], plannedCourses: [...x.plannedCourses, ...y.plannedCourses], unresolved: [...x.unresolved, ...y.unresolved] }); if (rows.length > limit) { truncated = true; break outer; } } return unique(rows); };
   const expandCourse = (name: string, path: Set<string>): Alternative[] => {
-    const id = normalize(name); if (completed.has(id)) return [{ courses: [], unresolved: [] }];
-    if (path.has(id)) { warnings.add(`Prerequisite cycle at ${id}`); return [{ courses: [id], unresolved: [`cycle:${id}`] }]; }
+    const id = normalize(name); if (completed.has(id)) return [{ courses: [], plannedCourses: [], unresolved: [] }];
+    if (path.has(id)) { warnings.add(`Prerequisite cycle at ${id}`); return [{ courses: [id], plannedCourses: [], unresolved: [`cycle:${id}`] }]; }
     const course = courses.get(id), next = new Set([...path, id]);
-    const prerequisites = course?.prerequisites ? expand(course.prerequisites, next) : [{ courses: [], unresolved: [`Unverified prerequisites: ${id}`] }];
-    return prerequisites.map((p) => ({ courses: [...p.courses, id], unresolved: p.unresolved }));
+    const prerequisites = course?.prerequisites ? expand(course.prerequisites, next) : [{ courses: [], plannedCourses: [], unresolved: [`Unverified prerequisites: ${id}`] }];
+    return prerequisites.map((p) => planned.has(id) ? { ...p, plannedCourses: [...p.plannedCourses, id] } : { ...p, courses: [...p.courses, id] });
   };
   const expand = (expression: RequirementExpression, path: Set<string>): Alternative[] => {
     if (expression.kind === "course") return expandCourse(expression.course, path);
-    if (expression.kind === "unknown") return [{ courses: [], unresolved: [expression.text] }];
+    if (expression.kind === "unknown") return [{ courses: [], plannedCourses: [], unresolved: [expression.text] }];
     if (expression.kind === "any") return unique(expression.items.flatMap((item) => expand(item, path)));
-    return expression.items.reduce((acc, item) => combine(acc, expand(item, path)), [{ courses: [], unresolved: [] }] as Alternative[]);
+    return expression.items.reduce((acc, item) => combine(acc, expand(item, path)), [{ courses: [], plannedCourses: [], unresolved: [] }] as Alternative[]);
   };
   const rankAlternatives = (rows: Alternative[]) => unique(rows).map((row) => { const credits = row.courses.reduce((sum, id) => sum + (courses.get(id)?.credits ?? 0), 0); return { ...row, credits, score: credits - row.courses.reduce((v, id) => v + (preferences[id] ?? 0), 0), creditsComplete: row.courses.every((id) => courses.get(id)?.credits !== undefined) }; }).sort((a, b) => a.unresolved.length - b.unresolved.length || Number(b.creditsComplete) - Number(a.creditsComplete) || a.score - b.score || a.courses.join().localeCompare(b.courses.join()));
   for (const [id, course] of courses) {
     const node = nodes.get(id)!; if (completed.has(id)) continue;
-    const prerequisites = course.prerequisites ? expand(course.prerequisites, new Set([id])) : [{ courses: [], unresolved: [`Unverified prerequisites: ${id}`] }];
+    const prerequisites = course.prerequisites ? expand(course.prerequisites, new Set([id])) : [{ courses: [], plannedCourses: [], unresolved: [`Unverified prerequisites: ${id}`] }];
     const ranked = rankAlternatives(prerequisites), best = ranked[0];
     node.state = planned.has(id) ? "planned" : !best || best.unresolved.length ? "unknown" : best.courses.length ? "blocked" : "available";
     // A preference-weighted favorite is not necessarily the credit minimum. Unknown
@@ -78,13 +83,34 @@ export function buildDegreeGraph(request: PlannerRequest) {
       node.minimumAdditionalCredits = Math.min(...ranked.map((alternative) => alternative.credits));
     }
   }
-  const targets = (request.goals?.length ? request.goals : [...planned]).map(normalize);
-  const alternatives = rankAlternatives(expand({ kind: "all", items: targets.map((course) => ({ kind: "course", course })) }, new Set()));
+  const requirements = request.requirements ?? [];
+  const requirementIds = new Set<string>();
+  for (const requirement of requirements) {
+    if (!requirement.id.trim()) throw new Error("Planner requirement IDs must be non-empty");
+    if (requirementIds.has(requirement.id)) throw new Error("Planner requirement IDs must be unique");
+    requirementIds.add(requirement.id);
+    const id = `requirement:${requirement.id}`;
+    nodes.set(id, { id, kind: "requirement", label: requirement.label ?? requirement.id, state: requirement.satisfied ? "completed" : "unknown" });
+    if (!requirement.satisfied) addExpression(requirement.expression, id, id);
+  }
+  // Every unsatisfied supplied requirement is combined with every explicit goal.
+  // This is an exact search over that caller-supplied AND/OR model, not a claim
+  // that the supplied rows are a complete official degree audit.
+  // Planned work remains a deliberate part of the modeled path, even where an
+  // official requirement has another eligible option. Its credits are already
+  // committed, so it is reported separately rather than charged as additional.
+  const goalCourses = [...(request.goals ?? []), ...planned];
+  const targetExpressions: RequirementExpression[] = [
+    ...goalCourses.map((course) => ({ kind: "course" as const, course })),
+    ...requirements.filter((requirement) => !requirement.satisfied).map((requirement) => requirement.expression),
+  ];
+  const alternatives = rankAlternatives(expand({ kind: "all", items: targetExpressions }, new Set()));
   const bestCourses = new Set(alternatives[0]?.courses ?? []);
   for (const node of nodes.values()) if (node.kind === "course") node.rank = completed.has(node.id) ? 0 : bestCourses.has(node.id) ? 1 : 2;
   if (truncated) {
     for (const node of nodes.values()) delete node.minimumAdditionalCredits;
     warnings.add("Search was truncated: rankings cover explored alternatives only, not a proven global optimum.");
   }
-  return { nodes: [...nodes.values()], edges, alternatives, truncated, warnings: [...warnings], ranking: "Unique remaining-course credits minus explicit preference weights; unknown prerequisites and missing credits are flagged. Not an official degree-completion verdict." };
+  const modelOptimal = targetExpressions.length > 0 && !truncated && alternatives.length > 0 && alternatives.every((alternative) => alternative.creditsComplete && !alternative.unresolved.length);
+  return { nodes: [...nodes.values()], edges, alternatives, truncated, warnings: [...warnings], modelOptimal, rankingScope: requirements.length ? "supplied official requirement alternatives, explicit goals, and planned courses" : "explicit goals and planned courses", ranking: "Unique remaining-course credits minus explicit preference weights; planned courses are retained separately and add no additional credits. A model-optimal result is exhaustive only for the supplied AND/OR inputs; unknown prerequisites, missing credits, truncation, and omitted official constraints prevent proof. This is not an official degree-completion verdict." };
 }

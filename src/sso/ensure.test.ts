@@ -52,7 +52,7 @@ const DEPS: EnsureDeps = {
   secretsRead: (name: string) => (name === "VANDERBILT_EMAIL" ? "synthetic@vanderbilt.edu" : JSON.stringify(PASSKEY)),
   ensureBrowser: async () => {},
   probe: async () => true,
-  env: {},
+  env: { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" },
   now: () => NOW,
   retryDelayMs: 0,
 };
@@ -63,19 +63,20 @@ describe("defaultEnsureBrowser", () => {
     reachableMock.mockReset();
   });
 
-  it("starts the browser pinned to the openclaw profile in headless mode", async () => {
+  it("starts exactly the host-selected managed profile without overriding its launch mode", async () => {
+    spawnMock.mockReturnValue(JSON.stringify({ driver: "openclaw", profile: "openclaw", cdpUrl: "http://127.0.0.1:18800", attachOnly: false }));
     reachableMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    await expect(defaultEnsureBrowser("http://127.0.0.1:18800")).resolves.toBeUndefined();
+    await expect(defaultEnsureBrowser("http://127.0.0.1:18800", {})).resolves.toBeUndefined();
     expect(spawnMock).toHaveBeenCalledWith(
       "openclaw",
-      ["browser", "--browser-profile", "openclaw", "start", "--headless"],
+      ["browser", "--browser-profile", "openclaw", "start"],
       expect.anything(),
     );
   });
 
   it("never spawns when the CDP endpoint is already reachable", async () => {
     reachableMock.mockResolvedValue(true);
-    await expect(defaultEnsureBrowser("http://127.0.0.1:18800")).resolves.toBeUndefined();
+    await expect(defaultEnsureBrowser("http://127.0.0.1:18800", { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" })).resolves.toBeUndefined();
     expect(spawnMock).not.toHaveBeenCalled();
   });
 });
@@ -277,7 +278,7 @@ describe("ensureSession", () => {
         return minted();
       },
       secretsRead: (name) => { seen.push(name); return name === "VANDERBILT_EMAIL" ? "vault@vanderbilt.edu" : JSON.stringify(PASSKEY); },
-      env: { VUTOOLKIT_VU_EMAIL: "env@vanderbilt.edu" },
+      env: { VUTOOLKIT_VU_EMAIL: "env@vanderbilt.edu", VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" },
     });
     expect(seen).toEqual(["VANDERBILT_PASSKEY"]);
   });

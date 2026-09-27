@@ -23,7 +23,7 @@ This is an independent, community-developed project, not an official Vanderbilt 
 | Prerequisite planning | `planner.graph` | Directed AND/OR graph, completed/planned courses, weighted alternatives, explicit unknowns |
 | Schedule planning | `scheduler.solve`, `scheduler.cartPlan` | Conflict-free combinations, lecture/lab components, free-time preferences, and cart-only diffs |
 | Professor metadata | `professors.search` | Public Vanderbilt Rate My Professors candidates, preserving namesake ambiguity |
-| Account setup | `setup.identity`, `setup.status`, `setup.prepare`, `setup.enroll` | Identity and sign-in preparation; consent-gated passkey enrollment implemented and fixture-tested, with first-time live issuance still unverified |
+| Account setup | `setup.run`, `setup.identity`, `setup.status` | Deterministic one-call setup, session reuse, vaulted password support, and explicit recovery; see acceptance evidence |
 | Web interface | `web` | Interactive degree/prerequisite graph, course details, setup, and operation explorer |
 | YES extension | Browser content script | Course/section preferences, schedule selection, bulk cart controls, and professor links; never enrollment |
 
@@ -54,11 +54,15 @@ The default GPA fixture is synthetic. It validates the calculation path, **not**
 
 ### Authentication
 
-For an existing OpenClaw account setup, vutoolkit resolves `VANDERBILT_EMAIL` and `VANDERBILT_PASSKEY` from that instance's secret vault. A local Chromium CDP endpoint is required when a fresh passkey ceremony is needed; the default integration starts OpenClaw's managed headless browser. Existing healthy sessions are reused.
+Call **`setup.run({"confirm":true})`** once after configuring the student's identity. Setup reuses the selected browser's signed-in session, or enters the configured identity and optional `VANDERBILT_PASSWORD` from the host vault. OneVU may require a one-time phone approval. The toolkit handles the login and enrollment steps deterministically; an LLM does not drive the browser.
 
-Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and optionally `VUTOOLKIT_CDP_URL` through their own secret manager. Do not put secret values in chat, repository files, or command-line arguments.
+First-time setup enrolls a dedicated toolkit passkey and verifies its vault storage and OneVU acknowledgement. Session cookies support ordinary requests but are not a substitute for that durable credential. Known-rejected keys require explicit `recovery:true`; the previous key is preserved in the host vault. `allowInteractiveVerification:false` uses existing authentication only, without submitting a password or initiating verification.
 
-For first-time OpenClaw setup, open the **Setup** panel (or call `setup.identity` and `setup.prepare`). Complete the first OneVU sign-in in the managed browser, then explicitly approve `setup.enroll` to create and vault a toolkit passkey. This account-security write is separate from ordinary read-only verification. A configured key is preserved, not automatically rotated if sign-in fails.
+Configure non-secret identity with `setup.identity` or vault entries `VANDERBILT_EMAIL` / `VANDERBILT_VUNETID`. Store passwords through the host's secret-entry UI, never chat, repository files, or command arguments. If no password is configured, `setup.prepare` opens a manual sign-in tab; rerun `setup.run` after signing in. Missing prerequisites and verification requirements return named errors, not a request for an agent to improvise login steps.
+
+Browser selection: an explicit `VUTOOLKIT_CDP_URL` takes precedence, then `VUTOOLKIT_BROWSER_PROFILE`, then the host's compatible configured default. An incompatible implicit default may fall back to OpenClaw's managed profile. Explicit remote/custom endpoints never start an unrelated browser. Passkey enrollment requires full Chromium CDP/WebAuthn support, not merely a browser UI or extension relay.
+
+Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and `VUTOOLKIT_CDP_URL` through their own secret manager. Existing healthy sessions are reused.
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
 
@@ -75,7 +79,7 @@ Reload the gateway using your deployment's normal lifecycle to activate the plug
 
 ## Data and permissions
 
-Academic-record reads and GPA calculations do not change enrollment. The browser extension changes the YES **cart only** when you choose its cart controls; it never submits enrollment. `setup.enroll` adds an account credential only after explicit confirmation and never replaces an existing toolkit key. `graph.call` is a general Microsoft Graph client: **POST, PATCH, PUT, and DELETE can change the real account** and should only be used when the account holder requests those actions.
+Academic-record reads and GPA calculations do not change enrollment. The browser extension changes the YES **cart only** when you choose its cart controls; it never submits enrollment. `setup.run` and `setup.enroll` add an account credential only with authorization; explicit recovery preserves the previous key before promoting its replacement. `graph.call` is a general Microsoft Graph client: **POST, PATCH, PUT, and DELETE can change the real account** and should only be used when the account holder requests those actions.
 
 Passkey material is resolved from the host's secret store. Session cookies and Graph tokens are cached locally in permission-restricted files. Most session operations return metadata, but `sessions.open` intentionally returns usable authentication material; send that payload only to the authorized client and keep it out of logs and public artifacts. See [Security](SECURITY.md).
 
@@ -116,7 +120,7 @@ The generated commands below describe the selected distribution surfaces. Regist
 - **Browser extension** — from a checkout: `npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt build`,
   then `chrome://extensions` → developer mode → Load unpacked → `hosts/browser/.output/chrome-mv3`
   (Firefox: `npm --prefix hosts/browser exec --no -- web-ext run`). Each GitHub Release attaches the
-  store uploads `vutoolkit-0.3.0-chrome.zip`, `vutoolkit-0.3.0-firefox.zip`, `vutoolkit-0.3.0-edge.zip`. When Firefox signing credentials are configured, it also attaches a
+  store uploads `vutoolkit-0.4.0-chrome.zip`, `vutoolkit-0.4.0-firefox.zip`, `vutoolkit-0.4.0-edge.zip`. When Firefox signing credentials are configured, it also attaches a
   Mozilla-signed `.xpi`; the Chrome Web Store, Firefox Add-ons and Edge Add-ons listings appear once the release's
   submit step has each store's credentials. Then pair it: `npx -y vutoolkit mcp --http --pair`
   prints the `<url>#<token>` the extension's options page accepts.

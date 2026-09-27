@@ -54,7 +54,7 @@ try {
   })
   if (filled) await tab.locator(`[id="${operation.name}-${filled}"]`).fill("smoke")
 
-  await tab.getByRole("button", { name: "Run" }).click()
+  await tab.getByRole("button", { name: "Run", exact: true }).click()
 
   if (page.cliAvailable) {
     const cli = tab.locator('pre[data-slot="cli"]')
