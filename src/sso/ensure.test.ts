@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,13 +13,14 @@ import { defaultEnsureBrowser, ensureSession, parseVaultPasskey, type EnsureDeps
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, execFileSync: vi.fn() };
+  return { ...actual, execFileSync: vi.fn(), execFile: Object.assign(vi.fn(), { [Symbol.for("nodejs.util.promisify.custom")]: vi.fn() }) };
 });
 vi.mock("./cdp-driver.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./cdp-driver.js")>();
   return { ...actual, cdpReachable: vi.fn() };
 });
 const spawnMock = vi.mocked(execFileSync);
+const asyncSpawnMock = (execFile as unknown as Record<symbol, ReturnType<typeof vi.fn>>)[Symbol.for("nodejs.util.promisify.custom")];
 const reachableMock = vi.mocked(cdpReachable);
 
 const dirs: string[] = [];
@@ -60,14 +61,15 @@ const DEPS: EnsureDeps = {
 describe("defaultEnsureBrowser", () => {
   beforeEach(() => {
     spawnMock.mockReset();
+    asyncSpawnMock.mockReset();
     reachableMock.mockReset();
   });
 
   it("starts exactly the host-selected managed profile without overriding its launch mode", async () => {
-    spawnMock.mockReturnValue(JSON.stringify({ driver: "openclaw", profile: "openclaw", cdpUrl: "http://127.0.0.1:18800", attachOnly: false }));
+    asyncSpawnMock.mockResolvedValue({ stdout: JSON.stringify({ driver: "openclaw", profile: "openclaw", cdpUrl: "http://127.0.0.1:18800", attachOnly: false }) });
     reachableMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await expect(defaultEnsureBrowser("http://127.0.0.1:18800", {})).resolves.toBeUndefined();
-    expect(spawnMock).toHaveBeenCalledWith(
+    expect(asyncSpawnMock).toHaveBeenCalledWith(
       "openclaw",
       ["browser", "--browser-profile", "openclaw", "start"],
       expect.anything(),
@@ -77,7 +79,7 @@ describe("defaultEnsureBrowser", () => {
   it("never spawns when the CDP endpoint is already reachable", async () => {
     reachableMock.mockResolvedValue(true);
     await expect(defaultEnsureBrowser("http://127.0.0.1:18800", { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" })).resolves.toBeUndefined();
-    expect(spawnMock).not.toHaveBeenCalled();
+    expect(asyncSpawnMock).not.toHaveBeenCalled();
   });
 });
 
