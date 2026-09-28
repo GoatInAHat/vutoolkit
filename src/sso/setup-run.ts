@@ -188,7 +188,7 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
   if (existing && !options.recovery) {
     const selection = deps.browserReady
       ? { cdpUrl: env.VUTOOLKIT_CDP_URL || "http://127.0.0.1:18800", canStart: false, source: "endpoint" as const }
-      : resolveBrowser(env);
+      : await resolveBrowser(env);
     try {
       await (deps.browserReady ? deps.browserReady(selection.cdpUrl) : ensureBrowser(selection));
       selectedCdpUrl = selection.cdpUrl;
@@ -213,7 +213,7 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
 
   const selection = deps.browserReady
     ? { cdpUrl: env.VUTOOLKIT_CDP_URL || "http://127.0.0.1:18800", canStart: false, source: "endpoint" as const }
-    : resolveBrowser(env);
+    : await resolveBrowser(env);
   const cdpUrl = selection.cdpUrl;
   selectedCdpUrl = cdpUrl;
   try { await (deps.browserReady ? deps.browserReady(cdpUrl) : ensureBrowser(selection)); }

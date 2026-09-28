@@ -114,7 +114,7 @@ export function defaultSecretsRead(name: string): string {
 
 /** Compatibility wrapper for callers with an already-selected endpoint. */
 export async function defaultEnsureBrowser(cdpUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  const selected = resolveBrowser(env);
+  const selected = await resolveBrowser(env);
   // A caller-provided endpoint is authoritative even when host defaults have changed.
   const sameEndpoint = new URL(selected.cdpUrl).href === new URL(cdpUrl).href;
   await ensureBrowser(sameEndpoint ? selected : { cdpUrl, source: "endpoint", canStart: false });
@@ -190,7 +190,7 @@ function isPermanent(error: unknown): boolean {
 async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promise<EnsureResult> {
   const env = deps.env ?? process.env;
   const secretsRead = deps.secretsRead ?? defaultSecretsRead;
-  const browser = resolveBrowser(env);
+  const browser = await resolveBrowser(env);
   const cdpUrl = browser.cdpUrl;
   // Secrets are read lazily and at most once: the Microsoft carry needs the passkey only when
   // federation sends it through OneVU sign-in.

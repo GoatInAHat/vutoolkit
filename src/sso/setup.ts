@@ -55,7 +55,7 @@ function credentials(deps: SetupDeps) {
   return { email, vunetId, raw, passkey, cdpUrl: env.VUTOOLKIT_CDP_URL || "http://127.0.0.1:18800" };
 }
 
-function browserSelection(deps: SetupDeps) {
+async function browserSelection(deps: SetupDeps) {
   const env = deps.env ?? process.env;
   // The injected browser hook belongs to tests/host shims which supply their own endpoint.
   return deps.browserReady
@@ -105,7 +105,7 @@ export function advancePasskeyCounter(expectedRaw: string, assertedSignCount: nu
 /** Non-sensitive status; a valid existing key is never rotated merely to complete setup. */
 export async function setupStatus(deps: SetupDeps = {}) {
   const auth = credentials(deps);
-  const browserAvailable = await (deps.reachable ?? cdpReachable)(browserSelection(deps).cdpUrl);
+  const browserAvailable = await (deps.reachable ?? cdpReachable)((await browserSelection(deps)).cdpUrl);
   return {
     identityConfigured: Boolean(auth.email || auth.vunetId),
     emailConfigured: Boolean(auth.email),
@@ -210,7 +210,7 @@ async function waitForPage(tab: CdpTab, deps: SetupDeps, email: string): Promise
 
 export async function prepareSetup(options: { keepTab?: boolean; recovery?: boolean } = {}, deps: SetupDeps = {}) {
   const auth = credentials(deps);
-  const browser = browserSelection(deps);
+  const browser = await browserSelection(deps);
   await (deps.browserReady ? deps.browserReady(browser.cdpUrl) : ensureBrowser(browser));
   return (deps.tab ?? withCdpTab)(browser.cdpUrl, SETTINGS_URL, async (tab) => {
     let authenticatorId: string | undefined;
@@ -251,7 +251,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
   if (auth.raw && readOptional(PREVIOUS_SECRET_NAME, deps))
     throw new SetupError("BACKUP_EXISTS", "A prior passkey recovery backup already occupies the previous-key vault slot. No new OneVU credential was created.");
   const expectedEmail = auth.email;
-  const browser = browserSelection(deps);
+  const browser = await browserSelection(deps);
   await (deps.browserReady ? deps.browserReady(browser.cdpUrl) : ensureBrowser(browser));
   return (deps.tab ?? withCdpTab)(browser.cdpUrl, SETTINGS_URL, async (tab) => {
     const initial = await waitForPage(tab, deps, expectedEmail);
