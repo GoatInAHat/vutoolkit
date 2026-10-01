@@ -4,6 +4,9 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.4.1
+
+- Fix Microsoft session health checks to verify the stored cookies through a silent Microsoft Graph token and read-only `/me` request, instead of the obsolete Outlook redirect check.
 - Reject Graph paths that normalize outside the documented `/v1.0/` API root before obtaining an access token or sending a request.
 - Clarify v0.4.0 registry availability, scan status, and the distinction between installed source and verified live gateway activation.
 

@@ -1,29 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { classifyMicrosoftProbe } from "./liveness.js";
+import type { CookieRecord } from "../vault/file-store.js";
+import { probeMicrosoft } from "./liveness.js";
 
-const AUTHORIZE = "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize";
+const cookies: CookieRecord[] = [
+  { name: "ESTSAUTHPERSISTENT", value: "redacted-fixture", domain: "login.microsoftonline.com" },
+];
 
-describe("classifyMicrosoftProbe", () => {
-  it("alive: the silent authorize answers with a form_post back to office.com", () => {
-    const html = '<form method="POST" name="hiddenform" action="https://www.office.com/landingv2"><input type="hidden" name="code" value="x" /><input type="hidden" name="id_token" value="y" /></form>';
-    expect(classifyMicrosoftProbe(200, AUTHORIZE, html)).toBe(true);
+function graphFetch(meStatus = 200): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith("https://login.microsoftonline.com/common/oauth2/authorize")) {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://login.microsoftonline.com/common/oauth2/nativeclient?code=fixture" },
+      });
+    }
+    if (url === "https://login.microsoftonline.com/common/oauth2/token") {
+      return new Response(JSON.stringify({ access_token: "in-memory-fixture", expires_in: 3600 }), { status: 200 });
+    }
+    if (url === "https://graph.microsoft.com/v1.0/me?$select=id") {
+      expect((init?.headers as Record<string, string>).authorization).toBe("Bearer in-memory-fixture");
+      return new Response("{}", { status: meStatus });
+    }
+    throw new Error("unexpected request " + url);
+  }) as typeof fetch;
+}
+
+describe("probeMicrosoft", () => {
+  it("proves liveness through the silent Graph token flow and read-only /me", async () => {
+    expect(await probeMicrosoft(cookies, graphFetch())).toBe(true);
   });
 
-  it("alive: a redirect chain that ends on the relying party", () => {
-    expect(classifyMicrosoftProbe(200, "https://www.office.com/landing", "<html></html>")).toBe(true);
+  it("rejects a Graph session whose proof request is unauthorized", async () => {
+    expect(await probeMicrosoft(cookies, graphFetch(401))).toBe(false);
   });
 
-  it("dead: the authorize URL renders the sign-in page", () => {
-    const html = '<script>$Config={"urlPost":"/common/login"}</script><input name="loginfmt" type="email">';
-    expect(classifyMicrosoftProbe(200, AUTHORIZE, html)).toBe(false);
-  });
-
-  it("dead: a form that posts back to the login host, or no token fields", () => {
-    expect(classifyMicrosoftProbe(200, AUTHORIZE, '<form action="https://login.microsoftonline.com/kmsi"><input name="code"></form>')).toBe(false);
-    expect(classifyMicrosoftProbe(200, AUTHORIZE, '<form action="https://www.office.com/landingv2"><input name="state"></form>')).toBe(false);
-  });
-
-  it("dead: non-200 answers", () => {
-    expect(classifyMicrosoftProbe(400, AUTHORIZE, "")).toBe(false);
+  it("rejects an empty cookie set without network access", async () => {
+    const fetchImpl = (() => { throw new Error("must not call network"); }) as typeof fetch;
+    expect(await probeMicrosoft([], fetchImpl)).toBe(false);
   });
 });

@@ -13,11 +13,27 @@ import type { CookieRecord } from "../vault/file-store.js";
 import type { Idp } from "../vault/index.js";
 import { CookieJar, jarFetch } from "../yes/jar.js";
 import { discoverRecordFragmentUrl } from "../yes/aai-record.js";
+import { ensureGraphToken, GraphTokenCache } from "../graph/token.js";
 
 /** The aai shell: a live Vanderbilt session lands here with its academic-record hx-get URL. */
 const AAI_SHELL_URL = "https://aai.app.vanderbilt.edu/aai";
-/** A live Microsoft session completes this silent authorize; a dead one bounces to sign-in. */
-const MICROSOFT_PROBE_URL = "https://www.office.com/?auth=2";
+/** Probe ids are unique so parallel session checks never share an ephemeral token flight. */
+let microsoftProbeSequence = 0;
+
+/** The liveness check must not persist an OAuth token; its cache exists only in memory. */
+class MicrosoftProbeTokenCache extends GraphTokenCache {
+  constructor() {
+    super(`memory:vutoolkit-microsoft-probe-${++microsoftProbeSequence}`);
+  }
+
+  override read() {
+    return null;
+  }
+
+  override put(): void {
+    // Liveness only needs the token for this one proof request.
+  }
+}
 const BROWSER_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
@@ -45,43 +61,20 @@ export async function probeVanderbilt(cookies: CookieRecord[], fetchImpl?: typeo
 }
 
 /**
- * Alive iff office.com's silent authorize succeeds. The Outlook SPA shell renders with or
- * without a session, so it cannot be probed directly. Verified live 2026-09-16:
- * - live session: the authorize page on login.microsoftonline.com answers 200 with an
- *   auto-submitting form_post (hidden `code` and `id_token`) whose action leaves the login host;
- * - dead session: the same URL renders the AAD sign-in page (loginfmt / urlPost config).
+ * Alive iff the stored cookies can mint a Graph token and call the read-only /me endpoint.
+ * Outlook's auth=2 shell check stopped working when Microsoft changed its redirect chain; use
+ * the same supported silent Graph flow as graph.call so session health matches actual toolkit use.
+ * The short-lived proof token is deliberately kept only in memory.
  */
 export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof fetch): Promise<boolean> {
   if (cookies.length === 0) return false;
   try {
-    const res = await jarFetch(MICROSOFT_PROBE_URL, {
-      jar: new CookieJar(cookies),
-      headers: { "user-agent": BROWSER_UA },
-      fetchImpl,
+    const token = await ensureGraphToken(cookies, new MicrosoftProbeTokenCache(), { fetchImpl });
+    const res = await (fetchImpl ?? fetch)("https://graph.microsoft.com/v1.0/me?$select=id", {
+      headers: { authorization: `Bearer ${token.accessToken}` },
+      signal: AbortSignal.timeout(20_000),
     });
-    return classifyMicrosoftProbe(res.status, res.finalUrl, res.text);
-  } catch {
-    return false;
-  }
-}
-
-const LOGIN_HOST = /(^|\.)(login\.microsoftonline\.com|login\.live\.com)$/;
-
-/** Pure verdict over the silent-authorize response; exported for tests. */
-export function classifyMicrosoftProbe(status: number, finalUrl: string, html: string): boolean {
-  if (status !== 200) return false;
-  let host: string;
-  try {
-    host = new URL(finalUrl).hostname;
-  } catch {
-    return false;
-  }
-  if (!LOGIN_HOST.test(host)) return true; // landed back on the relying party
-  if (/name="loginfmt"|"urlPost"/.test(html)) return false; // the sign-in page
-  const action = /<form[^>]*\baction="([^"]+)"/i.exec(html)?.[1];
-  if (!action || !/name="(code|id_token)"/.test(html)) return false;
-  try {
-    return !LOGIN_HOST.test(new URL(action.replace(/&amp;/g, "&"), finalUrl).hostname);
+    return res.status === 200;
   } catch {
     return false;
   }
