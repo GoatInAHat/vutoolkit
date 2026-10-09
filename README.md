@@ -149,7 +149,7 @@ The generated commands below describe the selected distribution surfaces, not pr
 - **Browser extension** — from a checkout: `npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt build`,
   then `chrome://extensions` → developer mode → Load unpacked → `hosts/browser/.output/chrome-mv3`
   (Firefox: `npm --prefix hosts/browser exec --no -- web-ext run`). Each GitHub Release attaches the
-  store uploads `vutoolkit-0.4.2-chrome.zip`, `vutoolkit-0.4.2-firefox.zip`, `vutoolkit-0.4.2-edge.zip`. When Firefox signing credentials are configured, it also attaches a
+  store uploads `vutoolkit-0.4.3-chrome.zip`, `vutoolkit-0.4.3-firefox.zip`, `vutoolkit-0.4.3-edge.zip`. When Firefox signing credentials are configured, it also attaches a
   Mozilla-signed `.xpi`; the Chrome Web Store, Firefox Add-ons and Edge Add-ons listings appear once the release's
   submit step has each store's credentials. Then pair it: `npx -y vutoolkit mcp --http --pair`
   prints the `<url>#<token>` the extension's options page accepts.
