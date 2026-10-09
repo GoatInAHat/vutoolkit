@@ -1,12 +1,12 @@
 /**
- * FileSessionStore: the thin, file-backed SessionStore implementation of the vault contract
- * (src/vault/index.ts). One JSON file per data dir, chmod 0600, rows keyed by IdP. Values are
- * written by sessions.ingest and served by sessions.open; nothing else touches them, and no
- * code path logs or echoes cookie material.
+ * Session rows keyed by IdP. The operation factory selects configured native credential storage
+ * or standalone 0600 files. List returns metadata, while get/cookies
+ * supply material only to authenticated clients and the explicit sessions.open operation.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { VaultNotWiredError, type Idp, type SessionMeta, type SessionStore, type StoredSession } from "./index.js";
+import { credentialStorage, credentialSecretName, type CredentialStorage } from "./credential-store.js";
 
 /** The cookie fields worth keeping; harvest noise (size, priority, sourceScheme) is dropped. */
 export interface CookieRecord {
@@ -166,3 +166,59 @@ export class FileSessionStore implements SessionStore {
     return this.read().rows[idp]?.cookies ?? [];
   }
 }
+
+class NativeSessionStore extends FileSessionStore {
+  private readonly stores: Record<Idp, CredentialStorage>;
+  constructor(dataDir: string, env: NodeJS.ProcessEnv) {
+    super(`openclaw-vault:${credentialSecretName(dataDir, "sessions_vanderbilt")}`);
+    this.stores = {
+      vanderbilt: credentialStorage(dataDir, "sessions_vanderbilt", env)!,
+      microsoft: credentialStorage(dataDir, "sessions_microsoft", env)!,
+    };
+  }
+
+  private row(idp: Idp): StoreRow | null {
+    const raw = this.stores[idp].read();
+    if (raw === null) return null;
+    try {
+      const parsed = JSON.parse(raw) as StoreRow | null;
+      if (parsed === null) return null;
+      if (parsed.idp === idp && typeof parsed.cookieHeader === "string" &&
+          typeof parsed.acquiredAt === "string" && typeof parsed.healthy === "boolean" && Array.isArray(parsed.cookies)) return parsed;
+    } catch { /* sanitized below */ }
+    throw new VaultNotWiredError("Native session envelope is invalid; no credential was overwritten.");
+  }
+
+  override async list(): Promise<SessionMeta[]> {
+    return (["vanderbilt", "microsoft"] as const).flatMap((idp) => {
+      const row = this.row(idp);
+      return row ? [{ idp, acquiredAt: row.acquiredAt, expiresAt: row.expiresAt, healthy: row.healthy }] : [];
+    });
+  }
+
+  override async get(idp: Idp): Promise<StoredSession | null> {
+    const row = this.row(idp);
+    return row ? { idp, acquiredAt: row.acquiredAt, expiresAt: row.expiresAt, healthy: row.healthy, cookieHeader: row.cookieHeader } : null;
+  }
+
+  override async put(session: StoredSession & { cookies?: CookieRecord[] }): Promise<void> {
+    this.row(session.idp);
+    this.stores[session.idp].write(JSON.stringify({ ...session, cookies: session.cookies ?? [] }));
+  }
+
+  override async forget(idp: Idp): Promise<void> {
+    this.row(idp);
+    this.stores[idp].write("null");
+  }
+
+  override cookies(idp: Idp): CookieRecord[] {
+    return this.row(idp)?.cookies ?? [];
+  }
+}
+
+export const sessionStore = (dataDir: string, env: NodeJS.ProcessEnv = process.env): FileSessionStore => {
+  const mode = env.VUTOOLKIT_CREDENTIAL_STORE ?? "file";
+  if (mode === "file") return new FileSessionStore(join(dataDir, "sessions.vault.json"));
+  if (mode === "openclaw") return new NativeSessionStore(dataDir, env);
+  throw new VaultNotWiredError("VUTOOLKIT_CREDENTIAL_STORE must be openclaw or file.");
+};

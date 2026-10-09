@@ -40,7 +40,7 @@ function harness(opts: { signedIn?: boolean; existing?: string; pending?: string
   });
   const ensure = vi.fn(async () => ({ source: "minted" as const, healthy: true }));
   const deps: RunDeps = {
-    env: { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" },
+    env: { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800", VUTOOLKIT_CREDENTIAL_STORE: "file" },
     read: (name) => { const value = vault.get(name); if (!value) throw new Error("missing"); return value; },
     write: (name, value) => { vault.set(name, value); },
     browserReady: async () => {},

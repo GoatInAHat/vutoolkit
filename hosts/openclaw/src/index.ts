@@ -29,6 +29,21 @@ const entry = defineToolPlugin({
   activation: {
     "onStartup": true
   },
+  configSchema: Type.Unsafe<Record<string, unknown>>({
+    "type": "object",
+    "properties": {
+      "VUTOOLKIT_CREDENTIAL_STORE": {
+        "type": "string",
+        "enum": [
+          "file",
+          "openclaw"
+        ],
+        "default": "file",
+        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions and Graph tokens in the native vault; file preserves standalone 0600 storage."
+      }
+    },
+    "additionalProperties": false
+  }),
   tools: (tool) => [
     tool({
       name: "vutoolkit_courses_detail",
@@ -1022,7 +1037,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "vutoolkit_sessions_ingest",
-      description: "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
+      description: "Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {

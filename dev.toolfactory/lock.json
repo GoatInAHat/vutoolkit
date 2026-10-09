@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.3",
+  "toolfactoryVersion": "0.4.2",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",
@@ -54,7 +54,7 @@
       "state": "generated"
     },
     ".env.example": {
-      "sha256": "354b2cacf99ce9fb9239c7cd8dc0db97c2010eeeaaf57673cfd61c5dc690ed3c",
+      "sha256": "ed85f3a015eb47b2cec43d6788a2db1fc609dfa1f054112bc8cae144649de424",
       "state": "generated"
     },
     ".gitattributes": {
@@ -249,7 +249,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "71e6804d801232c2c729d56e7276cbaa9c784c901650bd0662244a5c10cadcf4",
+      "sha256": "ce0fa345694c8db87faf9c216fd9a861ecdb07f0e4439742d1f94d34a10e165e",
       "state": "generated",
       "keys": [
         "id",
@@ -257,7 +257,10 @@
         "description",
         "version",
         "configSchema.type",
-        "configSchema.properties",
+        "configSchema.properties.VUTOOLKIT_CREDENTIAL_STORE.type",
+        "configSchema.properties.VUTOOLKIT_CREDENTIAL_STORE.enum",
+        "configSchema.properties.VUTOOLKIT_CREDENTIAL_STORE.default",
+        "configSchema.properties.VUTOOLKIT_CREDENTIAL_STORE.description",
         "configSchema.additionalProperties",
         "activation.onStartup",
         "contracts.tools"
@@ -296,7 +299,7 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "4f5ba3f9dcba07da7c9ef00b7f485ab8de7dca12d155185e370d7b7f0cd95201",
+      "sha256": "90aa981fb6dad97ed72673c5be088cdb134e9a7b97b41852304b66189f497ca8",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
@@ -304,7 +307,7 @@
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "199f78e0d145cddc897d807abacfff9e4ef63d3f3f6ea60e6430805acf6a398d",
+      "sha256": "959c1718b60bb625ee4c10636e7c2f6079ef910fa79b750f78b20f8d40599c9f",
       "state": "generated",
       "regions": [
         {
@@ -358,7 +361,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "0a6e645fa2cf2972a970deca319bc65c37b5eb48551a082d8471369efec4542e",
+      "sha256": "835f023dba6840e655d2ff20fb198db8964ca1648033a82b58b0360cffd2b3ef",
       "state": "generated",
       "regions": [
         {
@@ -376,7 +379,7 @@
       "state": "generated"
     },
     "src/toolfactory/config.ts": {
-      "sha256": "d4b0d9c00b3acc3ddcbdf6e0ca2a422de7862ee4874cea1ec4d5e5f62d73032f",
+      "sha256": "abf98937345e3c760180dca33ebad8c65535f2bf8b9e2ea7115472c976abe8a4",
       "state": "generated"
     },
     "src/toolfactory/mcp.ts": {
@@ -444,7 +447,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "32569157966681814d15b3676734f3a89c7e4158cdcf33595a2b05cc777ce7ed",
+      "sha256": "1e33e6b1d8146e1ddcaf2824c4340a7c745c6e7621865949c0a6ad89635bfc91",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

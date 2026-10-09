@@ -1,8 +1,8 @@
-import { join } from "node:path";
 import { searchProfessors } from "./professors.js";
 import { z } from "zod";
 import { operation, type Context } from "../toolfactory/types.js";
-import { FileSessionStore } from "../vault/file-store.js";
+import { sessionStore } from "../vault/file-store.js";
+import { credentialEnv } from "../vault/credential-store.js";
 import { ensureSession } from "../sso/ensure.js";
 import { YesPlanningClient } from "./planning-client.js";
 import { officialAuditGraph } from "./audit-graph.js";
@@ -10,7 +10,7 @@ import { buildDegreeGraph, parsePrerequisites } from "./planner.js";
 import { solveSchedules, cartDifference } from "./scheduler.js";
 import { plannerInputSchema, scheduleInputSchema, sectionSchema } from "./schemas.js";
 async function withClient<T>(ctx: Context, read: (client: YesPlanningClient) => Promise<T>): Promise<T> {
-  const store = new FileSessionStore(join(ctx.dataDir, "sessions.vault.json"));
+  const store = sessionStore(ctx.dataDir, credentialEnv(ctx.config));
   await ensureSession("vanderbilt", store);
   const attempt = () => read(new YesPlanningClient({ cookies: store.cookies("vanderbilt") }));
   try { return await attempt(); }

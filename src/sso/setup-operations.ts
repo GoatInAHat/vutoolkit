@@ -2,6 +2,7 @@ import { z } from "zod";
 import { operation } from "../toolfactory/types.js";
 import { configureIdentity, enrollSetup, prepareSetup, setupStatus } from "./setup.js";
 import { runSetup } from "./setup-run.js";
+import { credentialEnv } from "../vault/credential-store.js";
 
 export const setupOperations = [
   operation({
@@ -25,7 +26,7 @@ export const setupOperations = [
     }),
     requires: ["secret", "net", "shell"],
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    handler: async (args, ctx) => runSetup(ctx.dataDir, args),
+    handler: async (args, ctx) => runSetup(ctx.dataDir, args, { env: credentialEnv(ctx.config) }),
   }),
   operation({
     name: "setup.identity",

@@ -1,8 +1,7 @@
 /**
- * The vault contract: the ONLY boundary between vutoolkit core and the OpenClaw secret vault.
- * The OpenClaw side implements SessionStore and SecretLoader as SecretRef-backed wiring; core
- * code depends on these interfaces and nothing else. Session values and passkey material never
- * pass through any other module, never touch disk, logs, or tool output.
+ * Session and passkey storage contracts. OpenClaw deployments configure native vault envelopes;
+ * standalone deployments retain file storage. Values are never diagnostic output. The
+ * authorized sessions.open operation intentionally returns an injection payload to its caller.
  */
 import type { PasskeyMaterialV1 } from "../sso/material.js";
 

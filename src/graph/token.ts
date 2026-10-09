@@ -5,14 +5,16 @@
  * no browser, exactly one 302 in the common case - which exchanges for a Graph access token
  * good for about an hour.
  *
- * Tokens are cached in a 0600 JSON file next to the session vault and re-minted silently when
- * they run low; concurrent callers share one mint (single flight per cache file). Token values
+ * Operation factories cache tokens in the configured credential backend and re-mint when
+ * they run low; concurrent callers share one mint per storage location. Token values
  * never appear in logs, errors, or tool output - the same discipline as cookie material.
  */
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { AuthError } from "../sso/errors.js";
 import type { CookieRecord } from "../vault/file-store.js";
+import { credentialStorage, type CredentialStorage } from "../vault/credential-store.js";
+import { VaultNotWiredError } from "../vault/index.js";
 
 /** Microsoft Office: a first-party public client, pre-consented tenant-wide; no secret needed. */
 const CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c";
@@ -74,33 +76,41 @@ interface CachedToken {
   expiresAtMs: number;
 }
 
-/** The on-disk token cache: one 0600 JSON file, atomic writes, corrupt reads as empty. */
+/** Injectable token storage; the direct constructor retains standalone 0600 file support. */
 export class GraphTokenCache {
-  constructor(private readonly filePath: string) {}
+  constructor(private readonly filePath: string, private readonly storage?: CredentialStorage) {}
 
   get location(): string {
-    return this.filePath;
+    return this.storage?.location ?? this.filePath;
   }
 
   read(): CachedToken | null {
-    if (!existsSync(this.filePath)) return null;
+    let raw: string | null;
+    if (this.storage) raw = this.storage.read();
+    else {
+      try { raw = existsSync(this.filePath) ? readFileSync(this.filePath, "utf8") : null; }
+      catch { return null; }
+    }
+    if (raw === null) return null;
     try {
-      const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as Partial<CachedToken>;
+      const parsed = JSON.parse(raw) as Partial<CachedToken>;
       if (
         typeof parsed.accessToken === "string" &&
         parsed.accessToken !== "" &&
-        typeof parsed.acquiredAtMs === "number" &&
-        typeof parsed.expiresAtMs === "number"
+        typeof parsed.acquiredAtMs === "number" && Number.isFinite(parsed.acquiredAtMs) &&
+        typeof parsed.expiresAtMs === "number" && Number.isFinite(parsed.expiresAtMs)
       ) {
         return { accessToken: parsed.accessToken, acquiredAtMs: parsed.acquiredAtMs, expiresAtMs: parsed.expiresAtMs };
       }
     } catch {
       /* fall through to empty */
     }
+    if (this.storage) throw new VaultNotWiredError("Native Graph token envelope is invalid; no credential was overwritten.");
     return null;
   }
 
   put(token: CachedToken): void {
+    if (this.storage) { this.storage.write(JSON.stringify(token)); return; }
     mkdirSync(dirname(this.filePath), { recursive: true });
     const temp = this.filePath + "." + process.pid + ".tmp";
     writeFileSync(temp, JSON.stringify(token, null, 2) + "\n", { mode: 0o600 });
@@ -112,6 +122,9 @@ export class GraphTokenCache {
     renameSync(temp, this.filePath);
   }
 }
+
+export const graphTokenCache = (dataDir: string, env: NodeJS.ProcessEnv = process.env): GraphTokenCache =>
+  new GraphTokenCache(join(dataDir, "graph-token.json"), credentialStorage(dataDir, "graph", env));
 
 export type AuthorizeOutcome =
   | { kind: "code"; code: string }

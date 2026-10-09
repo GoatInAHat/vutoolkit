@@ -66,6 +66,33 @@ Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
 
+### Credential cache storage
+
+Standalone deployments retain 0600 file storage by default. On OpenClaw, configure
+`plugins.entries.vutoolkit.config.VUTOOLKIT_CREDENTIAL_STORE` to `openclaw`; native CLI/MCP
+calls on that host must also set `VUTOOLKIT_CREDENTIAL_STORE=openclaw` and the same canonical
+`VUTOOLKIT_DATA_DIR` as the plugin. This is an explicit host setting, not a global environment
+change made by importing the library. Unknown modes and unavailable native vaults fail closed,
+without falling back to plaintext.
+
+The native backend stores session cookies and Graph tokens in readable `env`-kind JSON
+envelopes like the existing passkey adapter. Values travel over stdin, never command arguments,
+and every write is verified by exact readback. Entry names are scoped by data-directory path.
+Each IdP has its own entry, so an update or forget for Microsoft cannot overwrite a concurrent
+Vanderbilt update. Same-IdP refreshes remain last-writer-wins, as in the previous file backend;
+quiesce credential writers during migration. Never print a bare vault listing: readable entries
+contain credentials. The native vault's 64 KiB per-entry limit is enforced before writes.
+
+An existing `sessions.vault.json` or `graph-token.json` needs a deliberate cutover. Stop or
+finish toolkit credential writers, then invoke the exported
+`migrateCredentialCaches(dataDir)` from `dist/vault/credential-store.js` inside the trusted host
+process. It splits the legacy session envelope into per-IdP entries, verifies vault readback,
+rejects a conflicting existing vault value or a source
+changed during migration, returns only names/status, and leaves originals intact. Complete a
+native read/authentication proof before securely retiring the originals. Never switch an old
+file-backed process back on after retirement; rollback must first restore current vault
+contents to its old backend securely. Do not treat an earlier cache snapshot as current auth.
+
 ### OpenClaw
 
 From the built checkout:
@@ -75,13 +102,13 @@ openclaw plugins install --link hosts/openclaw
 openclaw plugins inspect vutoolkit --runtime --json
 ```
 
-Reload the gateway using your deployment's normal lifecycle to activate the plugin. After rebuilding a linked checkout, `npm run relink` refreshes its installed snapshot; a gateway reload is still required.
+On current OpenClaw, plugin install/link applies the plugin without a gateway restart. After rebuilding a linked checkout, refresh its installed core snapshot with `npm run relink`; edited source can be applied with `openclaw plugins reload vutoolkit --wait --json`. Verify the running plugin after either path.
 
 ## Data and permissions
 
 Academic-record reads and GPA calculations do not change enrollment. The browser extension changes the YES **cart only** when you choose its cart controls; it never submits enrollment. `setup.run` and `setup.enroll` add an account credential only with authorization; explicit recovery preserves the previous key before promoting its replacement. `graph.call` is a general Microsoft Graph client: **POST, PATCH, PUT, and DELETE can change the real account** and should only be used when the account holder requests those actions.
 
-Passkey material is resolved from the host's secret store. Session cookies and Graph tokens are cached locally in permission-restricted files. Most session operations return metadata, but `sessions.open` intentionally returns usable authentication material; send that payload only to the authorized client and keep it out of logs and public artifacts. See [Security](SECURITY.md).
+Passkey material is resolved from the host's secret store. Session cookies and Graph tokens use the configured native-vault or permission-restricted-file backend described above. Most session operations return metadata, but `sessions.open` intentionally returns usable authentication material; send that payload only to the authorized client and keep it out of logs and public artifacts. See [Security](SECURITY.md).
 
 ## Development and verification
 

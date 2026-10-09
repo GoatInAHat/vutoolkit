@@ -5,8 +5,18 @@
   "version": "0.4.2",
   "configSchema": {
     "type": "object",
-    "properties": {},
-    "additionalProperties": false
+    "additionalProperties": false,
+    "properties": {
+      "VUTOOLKIT_CREDENTIAL_STORE": {
+        "type": "string",
+        "enum": [
+          "file",
+          "openclaw"
+        ],
+        "default": "file",
+        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions and Graph tokens in the native vault; file preserves standalone 0600 storage."
+      }
+    }
   },
   "activation": {
     "onStartup": true

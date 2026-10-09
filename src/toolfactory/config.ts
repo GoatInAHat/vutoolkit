@@ -26,7 +26,7 @@ function dataDir(): string {
 export function context(): Context {
   return {
     config: {
-
+  "VUTOOLKIT_CREDENTIAL_STORE": process.env["VUTOOLKIT_CREDENTIAL_STORE"],
     },
     dataDir: dataDir(),
   };
