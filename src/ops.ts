@@ -3,24 +3,24 @@
  * Host-provided capabilities are declared with `requires`; toolfactory decides per surface
  * whether each operation is native, bridged, degraded, or excluded. Anything touching session
  * values or passkey material goes through the vault contract (src/vault/index.ts) and is
- * honestly gated until their wiring lands. sessions.ingest/open/list/forget are wired through
- * the file-backed FileSessionStore; sessions.refresh re-mints through the same store plus the
+ * honestly gated until their wiring lands. Session and Graph operations use the configured
+ * credential backend; sessions.refresh re-mints through the same store plus the
  * CDP ceremony (OneVU passkey or Microsoft Entra carry).
  */
 import { readFileSync } from "node:fs";
 import { yesOperations } from "./yes/operations.js";
-import { join } from "node:path";
 import { z } from "zod";
 import { verifyTranscript, whatIf } from "./gpa/engine.js";
 import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
 import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
-import { FileSessionStore, harvestToStoredSession } from "./vault/file-store.js";
+import { sessionStore, harvestToStoredSession } from "./vault/file-store.js";
 import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
 import { graphCall } from "./graph/client.js";
-import { ensureGraphToken, GraphTokenCache } from "./graph/token.js";
+import { ensureGraphToken, graphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
+import { credentialEnv } from "./vault/credential-store.js";
 
 const transcriptSchema = z.object({
   postedCumulativeGpa: z.number().optional(),
@@ -41,8 +41,7 @@ const transcriptSchema = z.object({
 });
 type TranscriptArgs = z.infer<typeof transcriptSchema>;
 
-/** The session vault: one 0600 JSON file in the tool's data dir, values never in tool output. */
-const vaultStore = (ctx: Context): FileSessionStore => new FileSessionStore(join(ctx.dataDir, "sessions.vault.json"));
+const vaultStore = (ctx: Context) => sessionStore(ctx.dataDir, credentialEnv(ctx.config));
 
 /**
  * Optional login_hint for the silent Graph authorize: env first, then the vault. Absence is fine -
@@ -149,7 +148,7 @@ export const operations = [
   operation({
     name: "sessions.ingest",
     description:
-      "Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.",
+      "Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.",
     input: z.object({
       idp: z.enum(["vanderbilt", "microsoft"]),
       sourcePath: z.string().describe(
@@ -201,7 +200,7 @@ export const operations = [
     handler: async ({ method, path, query, body }, ctx) => {
       const store = vaultStore(ctx);
       await ensureSession("microsoft", store);
-      const cache = new GraphTokenCache(join(ctx.dataDir, "graph-token.json"));
+      const cache = graphTokenCache(ctx.dataDir, credentialEnv(ctx.config));
       const getToken = (opts: { force?: boolean }): Promise<string> =>
         ensureGraphToken(store.cookies("microsoft"), cache, { ...opts, loginHint: bestEffortLoginHint() }).then(
           (token) => token.accessToken,

@@ -164,7 +164,7 @@ Arguments: `idp`.
 
 ### sessions.ingest
 
-Ingest a harvested browser cookie export into the session vault: keeps only cookies in the IdP's domain scope, stores values under the tool data dir (0600), and reports metadata only. The harvest itself is produced by the host browser outside this toolkit.
+Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.
 
 Arguments: `idp`, `sourcePath`.
 

@@ -4,6 +4,12 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.4.3
+
+- Handle Microsoft's Vanderbilt federation confirmation during sign-in, with exact-origin and account checks, bounded retries, and live session verification.
+- Support OpenClaw's native vault for cached SSO sessions and Microsoft Graph tokens while preserving the standalone file-backed mode.
+- Add regression coverage for confirmation pages, changed or disabled controls, repeated prompts, and native credential-cache behavior.
+
 ## 0.4.1
 
 - Fix Microsoft session health checks to verify the stored cookies through a silent Microsoft Graph token and read-only `/me` request, instead of the obsolete Outlook redirect check.

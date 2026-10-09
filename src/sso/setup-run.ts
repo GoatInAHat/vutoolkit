@@ -1,6 +1,5 @@
 /** Deterministic first-time/recovery setup. Tool arguments never contain credentials. */
-import { join } from "node:path";
-import { FileSessionStore, harvestToStoredSession } from "../vault/file-store.js";
+import { sessionStore, harvestToStoredSession } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, withCdpTab, type CdpTab } from "./cdp-driver.js";
 import { runSsoCeremony, type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, ensureSession, parseVaultPasskey } from "./ensure.js";
@@ -172,7 +171,7 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
     try { validateCredential(parseVaultPasskey(existing)); }
     catch { throw new SetupError("INVALID_PASSKEY", "The existing toolkit passkey is malformed. Preserve it and repair the host vault before setup.run; it will not be overwritten automatically."); }
   }
-  const store = new FileSessionStore(join(dataDir, "sessions.vault.json"));
+  const store = sessionStore(dataDir, deps.env ?? process.env);
   let selectedCdpUrl: string | undefined;
   const ensure = deps.ensure ?? ((idp: "vanderbilt" | "microsoft") => ensureSession(idp, store, {
     env: { ...env, VUTOOLKIT_VU_EMAIL: email, ...(selectedCdpUrl ? { VUTOOLKIT_CDP_URL: selectedCdpUrl } : {}) },

@@ -16,6 +16,18 @@
   "bundle": {
     "runtime": "package"
   },
+  "config": {
+    "type": "object",
+    "properties": {
+      "VUTOOLKIT_CREDENTIAL_STORE": {
+        "type": "string",
+        "enum": ["file", "openclaw"],
+        "default": "file",
+        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions and Graph tokens in the native vault; file preserves standalone 0600 storage."
+      }
+    },
+    "additionalProperties": false
+  },
   "tests": {
     "examples": {},
     "live": {
