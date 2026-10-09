@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.3",
+  "toolfactoryVersion": "0.4.4",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",

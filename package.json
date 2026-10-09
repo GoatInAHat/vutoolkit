@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "toolfactory": "0.4.3",
+    "toolfactory": "0.4.4",
     "tsx": "^4.0.0",
     "typescript": "^6.0.0",
     "vitest": "^4.0.0"
