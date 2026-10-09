@@ -75,6 +75,7 @@ export type MicrosoftFlowState =
   | { kind: "success"; url: string }
   | { kind: "password"; url: string }
   | { kind: "okta"; url: string }
+  | { kind: "federation-trust"; url: string }
   | { kind: "kmsi"; url: string }
   | { kind: "picker"; url: string }
   | { kind: "identifier"; url: string }
@@ -89,6 +90,8 @@ export interface MicrosoftProbe {
   okta?: boolean;
   /** Microsoft's "Pick an account" tile list is showing. */
   picker?: boolean;
+  /** Microsoft's exact, enabled Vanderbilt federation confirmation, not OAuth consent. */
+  federationTrust?: boolean;
 }
 
 /** Pure state machine over one page probe; the ceremony just acts on it. */
@@ -96,11 +99,41 @@ export function classifyMicrosoftFlow(probe: MicrosoftProbe): MicrosoftFlowState
   if (isMicrosoftSuccess(probe.url)) return { kind: "success", url: probe.url };
   if (probe.passwd) return { kind: "password", url: probe.url };
   if (probe.okta) return { kind: "okta", url: probe.url };
+  if (probe.federationTrust && isMicrosoftLoginOrigin(probe.url)) return { kind: "federation-trust", url: probe.url };
   if (probe.kmsi) return { kind: "kmsi", url: probe.url };
   if (probe.picker) return { kind: "picker", url: probe.url };
   if (probe.loginfmt) return { kind: "identifier", url: probe.url };
   return { kind: "wait", url: probe.url };
 }
+
+function isMicrosoftLoginOrigin(url: string): boolean {
+  try {
+    return new URL(url).origin === "https://login.microsoftonline.com";
+  } catch {
+    return false;
+  }
+}
+
+/** Observed 2026-10-08 at login.srf. Recheck the page before clicking its shared Next button. */
+const FEDERATION_TRUST_READY = `(() => {
+  if (location.origin !== 'https://login.microsoftonline.com') return false;
+  const visible = (e) => {
+    if (!e || !(e.offsetParent || e.getClientRects().length)) return false;
+    const s = getComputedStyle(e);
+    return s.visibility !== 'hidden' && s.display !== 'none' && parseFloat(s.opacity) > 0;
+  };
+  const h = document.querySelector('#loginHeader, h1, [role=heading]');
+  const b = document.querySelector('#idSIButton9');
+  return visible(h) && /^Do you trust vanderbilt\\.edu\\?$/i.test(h.textContent.trim()) &&
+    visible(b) && !b.disabled && b.getAttribute('aria-disabled') !== 'true' &&
+    /^Continue$/i.test((b.value || b.textContent || '').trim());
+})()`;
+
+const CLICK_FEDERATION_TRUST = `(() => {
+  if (!(${FEDERATION_TRUST_READY})) return false;
+  document.querySelector('#idSIButton9').click();
+  return true;
+})()`;
 
 /**
  * Visibility, not presence. Microsoft's identifier page renders a `passwd` input from the start
@@ -117,6 +150,7 @@ const PROBE_EXPR =
   " const h = document.querySelector('#loginHeader, h1, [role=heading]');" +
   " const heading = h ? h.textContent.trim() : '';" +
   " return { url: location.href, loginfmt," +
+  " federationTrust: " + FEDERATION_TRUST_READY + "," +
   " kmsi: vis('#acceptButton') || (/stay signed in/i.test(heading) && vis('#idSIButton9'))," +
   " picker: /pick an account/i.test(heading) && document.querySelectorAll('[data-test-id]').length > 0," +
   " passwd: !loginfmt && vis('input[name=passwd]')," +
@@ -161,6 +195,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
     let identifierFills = 0;
     let kmsiClicks = 0;
     let pickerClicks = 0;
+    let federationTrustClicks = 0;
     let unverifiedLandings = 0;
     let oktaSightings = 0;
     let finalUrl = "";
@@ -195,6 +230,13 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
       }
       if (state.kind === "okta" && oktaSightings >= 2) {
         throw new AuthError("OKTA_SESSION_REQUIRED", "Microsoft sign-in federated to OneVU, and the browser holds no live OneVU session", { retryable: true });
+      }
+      if (state.kind === "federation-trust") {
+        if (!/^[^@\s]+@vanderbilt\.edu$/i.test(opts.email) || federationTrustClicks >= 2) {
+          throw new AuthError("MICROSOFT_FLOW_CHANGED", "Microsoft's Vanderbilt federation confirmation could not complete for the configured account", { retryable: false });
+        }
+        if ((await evaluate(CLICK_FEDERATION_TRUST).catch(() => false)) === true) federationTrustClicks++;
+        continue;
       }
       if (state.kind === "kmsi" && kmsiClicks < 3) {
         if ((await evaluate(CLICK_KMSI).catch(() => false)) === true) kmsiClicks++;
