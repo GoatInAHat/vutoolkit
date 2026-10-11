@@ -186,7 +186,7 @@ Arguments: `idp`, `format`.
 
 ### sessions.refresh
 
-Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy.
+Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry.
 
 Arguments: `idp`.
 

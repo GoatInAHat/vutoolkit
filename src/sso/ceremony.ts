@@ -79,6 +79,8 @@ export interface OktaProbe {
   identifier: boolean;
   /** The webauthn authenticator's Select button is rendered. */
   webauthn: boolean;
+  /** Automatic WebAuthn verification is pending; this screen need not have a Verify button. */
+  verifying?: boolean;
   /** Okta's form error text, empty when none is shown. */
   error: string;
 }
@@ -87,6 +89,7 @@ export type OktaFlowState =
   | { kind: "success" }
   | { kind: "error"; message: string }
   | { kind: "webauthn" }
+  | { kind: "verifying" }
   | { kind: "identifier" }
   | { kind: "wait" };
 
@@ -95,6 +98,7 @@ export function classifyOktaFlow(probe: OktaProbe): OktaFlowState {
   if (isLoginSuccess(probe.url)) return { kind: "success" };
   if (probe.error) return { kind: "error", message: probe.error };
   if (probe.webauthn) return { kind: "webauthn" };
+  if (probe.verifying) return { kind: "verifying" };
   if (probe.identifier) return { kind: "identifier" };
   return { kind: "wait" };
 }
@@ -104,7 +108,9 @@ const PROBE_EXPR =
   " const vis = (s) => { const e = document.querySelector(s); return !!(e && (e.offsetParent || e.getClientRects().length)); };" +
   " const errEl = document.querySelector('.o-form-error-container');" +
   " const error = errEl ? (errEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 200) : '';" +
-  " return { url: location.href, identifier: vis('input[name=identifier]'), webauthn: vis('[data-se=webauthn] [data-se=button]'), error };" +
+  " const heading = (document.querySelector('h2')?.textContent || '').trim();" +
+  " const verifying = location.origin === 'https://onevu.vanderbilt.edu' && heading === 'Verify with Security Key or Biometric Authenticator' && vis('[data-se=switchAuthenticator]');" +
+  " return { url: location.href, identifier: vis('input[name=identifier]'), webauthn: vis('[data-se=webauthn] [data-se=button]'), verifying, error };" +
   "})()";
 
 /** Tick Okta's "Keep me signed in" when it is offered, so the Okta session survives browser restarts. */
@@ -118,87 +124,134 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
   const stepMs = opts.stepMs ?? 1500;
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const loginUrl = opts.loginUrl ?? "https://onevu.vanderbilt.edu/";
-  return withCdpTab(opts.cdpUrl, loginUrl, async (tab) => {
+  // A remembered-user page can start navigator.credentials.get as soon as it loads. Attach
+  // the authenticator and credential before navigation, not after an assertion has started.
+  return withCdpTab(opts.cdpUrl, "about:blank", async (tab) => {
     const { send, evaluate } = tab;
     await send("Page.enable");
-    await send("WebAuthn.enable");
-    const au = await send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
-      options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
-    });
     const signCountUsed = (Number(opts.passkey.signCount) || 0) + 1;
-    await send("WebAuthn.addCredential", {
-      authenticatorId: au.authenticatorId,
-      credential: {
-        credentialId: toCdpB64(opts.passkey.credentialId),
-        isResidentCredential: opts.passkey.isResidentCredential ?? false,
-        rpId: opts.passkey.rpId,
-        privateKey: toCdpB64(opts.passkey.privateKey),
-        userHandle: toCdpB64(opts.passkey.userHandle),
-        signCount: signCountUsed,
-      },
-    });
-
-    const deadline = Date.now() + timeoutMs;
-    let finalUrl = "";
-    let identifierSubmits = 0;
-    let webauthnClicks = 0;
-    let first = true;
-    while (Date.now() < deadline) {
-      await sleep(first ? 2500 : stepMs);
-      first = false;
-      const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as OktaProbe | null;
-      if (!probe) continue; // mid-navigation; probe again
-      finalUrl = String(probe.url ?? "");
-      const state = classifyOktaFlow(probe);
-      if (state.kind === "success") {
-        let assertedSignCount: number | undefined;
-        if (opts.requireAssertion) {
-          let exactHome = false;
-          try {
-            const success = new URL(finalUrl);
-            exactHome = success.origin === "https://onevu.vanderbilt.edu" && success.pathname === "/app/UserHome";
-          } catch { /* reject malformed success URL */ }
-          if (!exactHome) throw new AuthError("OKTA_FLOW_CHANGED", "Passkey verification did not finish on OneVU's authenticated home; no verified session was returned.", { retryable: false });
-          const asserted = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
-          const key = asserted.credentials.find((credential) => toCdpB64(credential.credentialId) === toCdpB64(opts.passkey.credentialId));
-          if (!key || !Number.isFinite(key.signCount) || key.signCount <= signCountUsed)
-            throw new AuthError("OKTA_REJECTED", "OneVU reached a signed-in page without a verified assertion from the newly enrolled toolkit passkey; no verified session was returned.", { retryable: false });
-          assertedSignCount = key.signCount;
-        }
-        const cookies = await harvestCookies(send);
-        const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
-        return {
-          cookies,
-          acquiredAt: new Date().toISOString(),
-          expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
-          finalUrl,
-          signCountUsed,
-          ...(opts.requireAssertion ? { passkeyVerified: true, assertedSignCount } : {}),
-        };
-      }
-      if (state.kind === "error") {
-        throw new AuthError("OKTA_REJECTED", `OneVU sign-in showed an error: "${state.message}"`, { retryable: true });
-      }
-      if (state.kind === "webauthn" && webauthnClicks < 3) {
-        if ((await evaluate(`(${CLICK_VISIBLE})('[data-se=webauthn] [data-se=button]')`).catch(() => false)) === true) webauthnClicks++;
-        continue;
-      }
-      if (state.kind === "identifier" && identifierSubmits < 2) {
-        const filled = await evaluate(`(${FILL_NATIVE})('input[name=identifier]', ${JSON.stringify(opts.email)})`).catch(() => false);
-        if (filled !== true) continue;
-        await evaluate(KEEP_SIGNED_IN).catch(() => false);
-        if ((await evaluate(`(${CLICK_VISIBLE})('input[type=submit],button[type=submit]')`).catch(() => false)) === true) identifierSubmits++;
-      }
-    }
-    let where = "an unknown page";
+    let credentialSignCount = signCountUsed;
+    let observedSignCount = signCountUsed;
+    const installAuthenticator = async () => {
+      await send("WebAuthn.enable");
+      const authenticator = await send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
+        options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+      });
+      await send("WebAuthn.addCredential", {
+        authenticatorId: authenticator.authenticatorId,
+        credential: {
+          credentialId: toCdpB64(opts.passkey.credentialId),
+          isResidentCredential: opts.passkey.isResidentCredential ?? false,
+          rpId: opts.passkey.rpId,
+          privateKey: toCdpB64(opts.passkey.privateKey),
+          userHandle: toCdpB64(opts.passkey.userHandle),
+          signCount: credentialSignCount,
+        },
+      });
+      return authenticator;
+    };
+    let au = await installAuthenticator();
+    const assertedCounter = async () => {
+      const { credentials } = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
+      const count = credentials.find(c => toCdpB64(c.credentialId) === toCdpB64(opts.passkey.credentialId))?.signCount;
+      return typeof count === "number" && Number.isFinite(count) && count > credentialSignCount ? count : undefined;
+    };
     try {
-      const u = new URL(finalUrl);
-      where = u.host + u.pathname;
-    } catch { /* keep default */ }
-    throw new AuthError(
-      "OKTA_FLOW_CHANGED",
-      `OneVU sign-in did not reach the OneVU home within ${Math.round(timeoutMs / 1000)}s (last page ${where}; identifier submits ${identifierSubmits}, passkey selections ${webauthnClicks})`,
-      { retryable: true },
-    );
+      await send("Page.navigate", { url: loginUrl });
+
+      const deadline = Date.now() + timeoutMs;
+      let finalUrl = "";
+      let identifierSubmits = 0;
+      let webauthnClicks = 0;
+      let verificationStarted: number | undefined;
+      let verificationRestarts = 0;
+      let first = true;
+      while (Date.now() < deadline) {
+        await sleep(first ? 2500 : stepMs);
+        first = false;
+        const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as OktaProbe | null;
+        if (!probe) continue; // mid-navigation; probe again
+        finalUrl = String(probe.url ?? "");
+        const state = classifyOktaFlow(probe);
+        if (state.kind !== "verifying") verificationStarted = undefined;
+        if (state.kind === "success") {
+          let assertedSignCount: number | undefined;
+          if (opts.requireAssertion) {
+            let exactHome = false;
+            try {
+              const success = new URL(finalUrl);
+              exactHome = success.origin === "https://onevu.vanderbilt.edu" && success.pathname === "/app/UserHome";
+            } catch { /* reject malformed success URL */ }
+            if (!exactHome) throw new AuthError("OKTA_FLOW_CHANGED", "Passkey verification did not finish on OneVU's authenticated home; no verified session was returned.", { retryable: false });
+            const asserted = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
+            const key = asserted.credentials.find((credential) => toCdpB64(credential.credentialId) === toCdpB64(opts.passkey.credentialId));
+            if (key && Number.isFinite(key.signCount) && key.signCount > credentialSignCount) observedSignCount = Math.max(observedSignCount, key.signCount);
+            if (!key || !Number.isFinite(key.signCount) || observedSignCount <= signCountUsed)
+              throw new AuthError("OKTA_REJECTED", "OneVU reached a signed-in page without a verified assertion from the newly enrolled toolkit passkey; no verified session was returned.", { retryable: false });
+            assertedSignCount = observedSignCount;
+          }
+          const cookies = await harvestCookies(send);
+          const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
+          return {
+            cookies,
+            acquiredAt: new Date().toISOString(),
+            expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
+            finalUrl,
+            signCountUsed,
+            ...(opts.requireAssertion ? { passkeyVerified: true, assertedSignCount } : {}),
+          };
+        }
+        if (state.kind === "error") {
+          throw new AuthError("OKTA_REJECTED", `OneVU sign-in showed an error: "${state.message}"`, { retryable: true });
+        }
+        if (state.kind === "webauthn" && webauthnClicks < 3) {
+          if ((await evaluate(`(${CLICK_VISIBLE})('[data-se=webauthn] [data-se=button]')`).catch(() => false)) === true) webauthnClicks++;
+          continue;
+        }
+        if (state.kind === "verifying") {
+          verificationStarted ??= Date.now();
+          // This screen starts WebAuthn automatically. Give the real assertion time, then
+          // rebuild both the document and authenticator before restarting OneVU. Switching
+          // methods or reloading alone leaves a late-installed authenticator unusable.
+          // Never fall back to passwords, disable MFA, or depend on a nonexistent Verify button.
+          if (Date.now() - verificationStarted >= 10_000 && verificationRestarts < 2) {
+            // Chromium may increment the counter before presence completes, while get() is
+            // still pending. Preserve that counter across authenticator replacement rather
+            // than treating it alone as proof of a completed login.
+            observedSignCount = Math.max(observedSignCount, await assertedCounter() ?? signCountUsed);
+            await send("Page.navigate", { url: "about:blank" });
+            observedSignCount = Math.max(observedSignCount, await assertedCounter() ?? signCountUsed);
+            await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au.authenticatorId });
+            await send("WebAuthn.disable", {});
+            credentialSignCount = Math.max(credentialSignCount, observedSignCount) + 1;
+            au = await installAuthenticator();
+            await send("Page.navigate", { url: loginUrl });
+            verificationRestarts++;
+            verificationStarted = undefined;
+            identifierSubmits = 0;
+            webauthnClicks = 0;
+          }
+          continue;
+        }
+        if (state.kind === "identifier" && identifierSubmits < 2) {
+          const filled = await evaluate(`(${FILL_NATIVE})('input[name=identifier]', ${JSON.stringify(opts.email)})`).catch(() => false);
+          if (filled !== true) continue;
+          await evaluate(KEEP_SIGNED_IN).catch(() => false);
+          if ((await evaluate(`(${CLICK_VISIBLE})('input[type=submit],button[type=submit]')`).catch(() => false)) === true) identifierSubmits++;
+        }
+      }
+      let where = "an unknown page";
+      try {
+        const u = new URL(finalUrl);
+        where = u.host + u.pathname;
+      } catch { /* keep default */ }
+      throw new AuthError(
+        "OKTA_FLOW_CHANGED",
+        `OneVU sign-in did not reach the OneVU home within ${Math.round(timeoutMs / 1000)}s (last page ${where}; identifier submits ${identifierSubmits}, passkey selections ${webauthnClicks})`,
+        { retryable: true },
+      );
+    } finally {
+      await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au.authenticatorId }).catch(() => {});
+    }
   }, { isolated: opts.requireAssertion === true });
 }

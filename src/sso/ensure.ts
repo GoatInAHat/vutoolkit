@@ -20,6 +20,7 @@
 import { execFileSync } from "node:child_process";
 import { harvestToStoredSession, type CookieRecord, type FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
+import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
@@ -35,6 +36,8 @@ const ENSURE_DEADLINE_MS = 6 * 60_000;
 const RETRY_DELAY_MS = 3_000;
 
 export interface EnsureDeps {
+  /** Force a replacement without deleting the current session before success. */
+  forceRefresh?: boolean;
   /** Override for tests; defaults to the real CDP ceremony. */
   ceremony?: Ceremony;
   /** Override for tests; defaults to the real Microsoft Entra-carry ceremony. */
@@ -45,6 +48,7 @@ export interface EnsureDeps {
   ensureBrowser?: (cdpUrl: string) => Promise<void>;
   /** Override for tests; defaults to the OpenClaw vault CLI. Never logs or echoes values. */
   secretsRead?: (name: string) => string;
+  secretsWrite?: (name: string, value: string) => void;
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
   /** Override for tests; delay before the single retry of a transient failure. */
@@ -56,6 +60,8 @@ export interface EnsureDeps {
 export interface EnsureResult extends SessionMeta {
   source: "cache" | "minted";
   finalUrl?: string;
+  passkeyVerified?: boolean;
+  assertedSignCount?: number;
 }
 
 function withinExpiry(session: StoredSession, now: Date): boolean {
@@ -151,14 +157,32 @@ function resultFrom(idp: Idp, stored: StoredSession, finalUrl: string): EnsureRe
   return { source: "minted", idp, acquiredAt: stored.acquiredAt, expiresAt: stored.expiresAt, healthy: true, finalUrl };
 }
 
-async function mintVanderbilt(ctx: MintContext): Promise<EnsureResult> {
+async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promise<EnsureResult> {
   const passkey = ctx.passkey();
   const minted: MintedSession = await oneCeremonyAtATime(() =>
-    (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey }),
+    (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
+      ...(requireAssertion ? { requireAssertion: true } : {}) }),
   );
   const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
+  if (minted.passkeyVerified && minted.assertedSignCount !== undefined && !(ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) {
+    const read = ctx.deps.secretsRead ?? defaultSecretsRead;
+    const currentRaw = read("VANDERBILT_PASSKEY");
+    const current = parseVaultPasskey(currentRaw);
+    if (["credentialId", "privateKey", "userHandle", "rpId"].some(field => current[field as keyof VaultPasskey] !== passkey[field as keyof VaultPasskey]))
+      throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The active passkey changed during sign-in; no credential was overwritten.", { retryable: false });
+    if (minted.assertedSignCount > current.signCount) {
+      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: minted.assertedSignCount });
+      if (read("VANDERBILT_PASSKEY") !== currentRaw)
+        throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey changed before its counter update; no credential was overwritten.", { retryable: false });
+      (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
+      if (read("VANDERBILT_PASSKEY") !== updated)
+        throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey counter write could not be verified; no session replacement was published.", { retryable: false });
+      passkey.signCount = minted.assertedSignCount;
+    }
+  }
   await ctx.store.put(stored);
-  return resultFrom("vanderbilt", stored, minted.finalUrl);
+  return { ...resultFrom("vanderbilt", stored, minted.finalUrl),
+    ...(minted.passkeyVerified ? { passkeyVerified: true, assertedSignCount: minted.assertedSignCount } : {}) };
 }
 
 async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {
@@ -170,7 +194,7 @@ async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {
   } catch (error) {
     if (!(error instanceof AuthError && error.code === "OKTA_SESSION_REQUIRED")) throw error;
     // Federation hop with no Okta session in the browser: sign in with the passkey, carry again.
-    await mintVanderbilt(ctx);
+    await mintVanderbilt(ctx, false); // The carry needs the shared browser's OneVU session.
     minted = await carry();
   }
   const stored = harvestToStoredSession("microsoft", minted.cookies, minted.acquiredAt);
@@ -230,7 +254,7 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
 async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promise<EnsureResult> {
   const now = (deps.now ?? (() => new Date()))();
   const existing = await store.get(idp);
-  if (existing && withinExpiry(existing, now)) {
+  if (!deps.forceRefresh && existing && withinExpiry(existing, now)) {
     if (justAcquired(existing, now)) {
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
     }
@@ -242,8 +266,7 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
       if (!existing.healthy) await store.put({ ...existing, cookies, healthy: true });
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: true };
     }
-    // Unexpired cookies, dead session: drop it and re-mint rather than hand back cookies that fail.
-    await store.forget(idp);
+    // Replace only after a successful mint. An auth failure must not erase the preserved row.
   }
   return mint(idp, store, deps);
 }
@@ -252,7 +275,7 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
 const inflight = new Map<string, Promise<EnsureResult>>();
 
 export function ensureSession(idp: Idp, store: FileSessionStore, deps: EnsureDeps = {}): Promise<EnsureResult> {
-  const key = `${store.location}::${idp}`;
+  const key = `${store.location}::${idp}::${deps.forceRefresh ? "refresh" : "ensure"}`;
   const running = inflight.get(key);
   if (running) return running;
   const work = withDeadline(ensureOnce(idp, store, deps), deps.deadlineMs ?? ENSURE_DEADLINE_MS, `sessions.ensure(${idp})`)
