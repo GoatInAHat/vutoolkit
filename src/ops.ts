@@ -123,6 +123,8 @@ export const operations = [
       expiresAt: z.string().optional(),
       healthy: z.boolean(),
       finalUrl: z.string().optional(),
+      passkeyVerified: z.boolean().optional(),
+      assertedSignCount: z.number().optional(),
     }),
     requires: ["secret", "net"],
     handler: async ({ idp }, ctx) => {
@@ -180,6 +182,8 @@ export const operations = [
       expiresAt: z.string().optional(),
       healthy: z.boolean(),
       finalUrl: z.string().optional(),
+      passkeyVerified: z.boolean().optional(),
+      assertedSignCount: z.number().optional(),
     }),
     requires: ["secret", "net"],
     handler: async ({ idp }, ctx) => ensureSession(idp, vaultStore(ctx)),

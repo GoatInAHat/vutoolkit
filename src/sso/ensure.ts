@@ -58,6 +58,8 @@ export interface EnsureDeps {
 export interface EnsureResult extends SessionMeta {
   source: "cache" | "minted";
   finalUrl?: string;
+  passkeyVerified?: boolean;
+  assertedSignCount?: number;
 }
 
 function withinExpiry(session: StoredSession, now: Date): boolean {
@@ -161,7 +163,8 @@ async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promis
   );
   const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
   await ctx.store.put(stored);
-  return resultFrom("vanderbilt", stored, minted.finalUrl);
+  return { ...resultFrom("vanderbilt", stored, minted.finalUrl),
+    ...(minted.passkeyVerified ? { passkeyVerified: true, assertedSignCount: minted.assertedSignCount } : {}) };
 }
 
 async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {

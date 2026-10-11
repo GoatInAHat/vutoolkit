@@ -1772,6 +1772,12 @@
           },
           "finalUrl": {
             "type": "string"
+          },
+          "passkeyVerified": {
+            "type": "boolean"
+          },
+          "assertedSignCount": {
+            "type": "number"
           }
         },
         "required": [
@@ -2034,6 +2040,12 @@
           },
           "finalUrl": {
             "type": "string"
+          },
+          "passkeyVerified": {
+            "type": "boolean"
+          },
+          "assertedSignCount": {
+            "type": "number"
           }
         },
         "required": [
