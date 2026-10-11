@@ -26,6 +26,18 @@ This skill supplies instructions, not the runtime or credentials. First check wh
 9. For an asleep/unavailable account holder use `allowInteractiveVerification:false`. It reuses existing authentication without submitting a password or initiating phone verification. If no authenticated session is available, preserve progress and report the blocker; do not wake the user or call cookie-only access complete.
 10. A known-rejected toolkit key requires explicit recovery authorization and `recovery:true`; the rejected key is not retried and is preserved as `VANDERBILT_PASSKEY_PREVIOUS` only after a new credential is verified. A distinct pending credential blocks duplicate enrollment. `status:"partial"` is not full setup: check `microsoftSession` and repair that connection separately. Successful cached-session access alone does not independently test a passkey assertion.
 
+## Outlook email drafts and replies
+
+For a request to draft email in the connected Microsoft account, use `graph.call` to save an unsent Outlook draft, then verify it. Chat prose alone is not a saved draft. Follow the account holder's instructions for content, recipients, and sending; creating a draft does not authorize sending it.
+
+1. Check for a retained draft ID or an existing matching draft before creating another. For a new message, use `POST /me/messages` with the requested subject, body, and recipients; Graph saves it in Drafts by default.
+2. For a reply, retrieve the actual source message and use `POST /me/messages/{sourceId}/createReply`, or `createReplyAll` when reply-all is requested. URL-encode message IDs. A new message with a `Re:` subject is not a native reply. Preserve the source's threading and `replyTo` recipients; do not invent a source ID or silently broaden the recipient set.
+3. Use `PATCH /me/messages/{draftId}` to finish the created draft and add requested attachments through its attachment endpoint. Before replacing a reply body, retain any quoted context the user wants preserved.
+4. Read the saved message back with `GET /me/messages/{draftId}`. Verify `isDraft:true`, subject, To/Cc/Bcc recipients, full body, and requested attachments (read the attachment collection when needed). A successful create response alone is not completion. After an ambiguous write or timeout, reconcile the retained ID or search Drafts before retrying; do not create duplicate drafts.
+5. Return the verified draft ID and `webLink` when available, plus any unresolved requirement. Keep authorization or access blockers explicit. Do not call `sendMail`, `send`, `reply`, or `replyAll` to fulfill a draft-only request; these send immediately and require separate sending authorization.
+
+API references: [new draft](https://learn.microsoft.com/en-us/graph/api/user-post-messages?view=graph-rest-1.0), [reply draft](https://learn.microsoft.com/en-us/graph/api/message-createreply?view=graph-rest-1.0), [reply-all draft](https://learn.microsoft.com/en-us/graph/api/message-createreplyall?view=graph-rest-1.0), [update draft](https://learn.microsoft.com/en-us/graph/api/message-update?view=graph-rest-1.0).
+
 ## Boundaries
 
 - Keep passkeys, cookie payloads, and tokens out of chat, logs, commits, and public test reports. `sessions.open` intentionally returns usable authentication material; pass it directly to the authorized client instead of quoting it.
