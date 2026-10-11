@@ -441,7 +441,7 @@
           "type": "string"
         },
         "skills": {
-          "description": "Skill directories under `.agents/skills/` that the OpenClaw plugin ships; OpenClaw loads them through the manifest's `skills` roots.",
+          "description": "Exact skill selection for the OpenClaw plugin. Omitted: the tool's own generated skill when the skill surface is selected. []: no skills. Other names resolve under `.agents/skills/`; OpenClaw loads the packaged manifest's `skills` roots.",
           "type": "array",
           "items": {
             "type": "string"
