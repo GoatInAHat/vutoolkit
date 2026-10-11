@@ -20,6 +20,7 @@
 import { execFileSync } from "node:child_process";
 import { harvestToStoredSession, type CookieRecord, type FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
+import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
@@ -47,6 +48,7 @@ export interface EnsureDeps {
   ensureBrowser?: (cdpUrl: string) => Promise<void>;
   /** Override for tests; defaults to the OpenClaw vault CLI. Never logs or echoes values. */
   secretsRead?: (name: string) => string;
+  secretsWrite?: (name: string, value: string) => void;
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
   /** Override for tests; delay before the single retry of a transient failure. */
@@ -162,6 +164,22 @@ async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promis
       ...(requireAssertion ? { requireAssertion: true } : {}) }),
   );
   const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
+  if (minted.passkeyVerified && minted.assertedSignCount !== undefined && !(ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) {
+    const read = ctx.deps.secretsRead ?? defaultSecretsRead;
+    const currentRaw = read("VANDERBILT_PASSKEY");
+    const current = parseVaultPasskey(currentRaw);
+    if (["credentialId", "privateKey", "userHandle", "rpId"].some(field => current[field as keyof VaultPasskey] !== passkey[field as keyof VaultPasskey]))
+      throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The active passkey changed during sign-in; no credential was overwritten.", { retryable: false });
+    if (minted.assertedSignCount > current.signCount) {
+      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: minted.assertedSignCount });
+      if (read("VANDERBILT_PASSKEY") !== currentRaw)
+        throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey changed before its counter update; no credential was overwritten.", { retryable: false });
+      (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
+      if (read("VANDERBILT_PASSKEY") !== updated)
+        throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey counter write could not be verified; no session replacement was published.", { retryable: false });
+      passkey.signCount = minted.assertedSignCount;
+    }
+  }
   await ctx.store.put(stored);
   return { ...resultFrom("vanderbilt", stored, minted.finalUrl),
     ...(minted.passkeyVerified ? { passkeyVerified: true, assertedSignCount: minted.assertedSignCount } : {}) };

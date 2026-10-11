@@ -161,6 +161,21 @@ describe("ensureSession", () => {
     expect((await store.get("vanderbilt"))?.cookieHeader).toBe("old=1");
   });
 
+  it("persists the verified counter without replacing key material or a fresher counter", async () => {
+    const store = freshStore();
+    let raw = JSON.stringify(PASSKEY);
+    const write = vi.fn((_name, value) => { raw = value; });
+    const result = await ensureSession("vanderbilt", store, { ...DEPS, forceRefresh: true,
+      secretsRead: name => name === "VANDERBILT_PASSKEY" ? raw : "synthetic@vanderbilt.edu", secretsWrite: write,
+      ceremony: async () => ({ ...minted(), passkeyVerified: true, assertedSignCount: 668 }) });
+    expect(result).toMatchObject({ passkeyVerified: true, assertedSignCount: 668 });
+    expect(JSON.parse(raw)).toEqual({ ...PASSKEY, signCount: 668 });
+    await ensureSession("vanderbilt", store, { ...DEPS, forceRefresh: true,
+      secretsRead: name => name === "VANDERBILT_PASSKEY" ? raw : "synthetic@vanderbilt.edu", secretsWrite: write,
+      ceremony: async () => ({ ...minted(), passkeyVerified: true, assertedSignCount: 667 }) });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed on a harvest without IdP cookies, without retrying", async () => {
     const store = freshStore();
     let calls = 0;
