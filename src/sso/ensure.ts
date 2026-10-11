@@ -35,6 +35,8 @@ const ENSURE_DEADLINE_MS = 6 * 60_000;
 const RETRY_DELAY_MS = 3_000;
 
 export interface EnsureDeps {
+  /** Force a replacement without deleting the current session before success. */
+  forceRefresh?: boolean;
   /** Override for tests; defaults to the real CDP ceremony. */
   ceremony?: Ceremony;
   /** Override for tests; defaults to the real Microsoft Entra-carry ceremony. */
@@ -151,10 +153,11 @@ function resultFrom(idp: Idp, stored: StoredSession, finalUrl: string): EnsureRe
   return { source: "minted", idp, acquiredAt: stored.acquiredAt, expiresAt: stored.expiresAt, healthy: true, finalUrl };
 }
 
-async function mintVanderbilt(ctx: MintContext): Promise<EnsureResult> {
+async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promise<EnsureResult> {
   const passkey = ctx.passkey();
   const minted: MintedSession = await oneCeremonyAtATime(() =>
-    (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey }),
+    (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
+      ...(requireAssertion ? { requireAssertion: true } : {}) }),
   );
   const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
   await ctx.store.put(stored);
@@ -170,7 +173,7 @@ async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {
   } catch (error) {
     if (!(error instanceof AuthError && error.code === "OKTA_SESSION_REQUIRED")) throw error;
     // Federation hop with no Okta session in the browser: sign in with the passkey, carry again.
-    await mintVanderbilt(ctx);
+    await mintVanderbilt(ctx, false); // The carry needs the shared browser's OneVU session.
     minted = await carry();
   }
   const stored = harvestToStoredSession("microsoft", minted.cookies, minted.acquiredAt);
@@ -230,7 +233,7 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
 async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promise<EnsureResult> {
   const now = (deps.now ?? (() => new Date()))();
   const existing = await store.get(idp);
-  if (existing && withinExpiry(existing, now)) {
+  if (!deps.forceRefresh && existing && withinExpiry(existing, now)) {
     if (justAcquired(existing, now)) {
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
     }
@@ -242,8 +245,7 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
       if (!existing.healthy) await store.put({ ...existing, cookies, healthy: true });
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: true };
     }
-    // Unexpired cookies, dead session: drop it and re-mint rather than hand back cookies that fail.
-    await store.forget(idp);
+    // Replace only after a successful mint. An auth failure must not erase the preserved row.
   }
   return mint(idp, store, deps);
 }
@@ -252,7 +254,7 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
 const inflight = new Map<string, Promise<EnsureResult>>();
 
 export function ensureSession(idp: Idp, store: FileSessionStore, deps: EnsureDeps = {}): Promise<EnsureResult> {
-  const key = `${store.location}::${idp}`;
+  const key = `${store.location}::${idp}::${deps.forceRefresh ? "refresh" : "ensure"}`;
   const running = inflight.get(key);
   if (running) return running;
   const work = withDeadline(ensureOnce(idp, store, deps), deps.deadlineMs ?? ENSURE_DEADLINE_MS, `sessions.ensure(${idp})`)

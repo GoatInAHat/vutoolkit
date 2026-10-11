@@ -132,10 +132,33 @@ describe("ensureSession", () => {
   it("mints over an expired session", async () => {
     const store = freshStore();
     await store.put({ idp: "vanderbilt", acquiredAt: NOW.toISOString(), expiresAt: new Date(NOW.getTime() - 1000).toISOString(), healthy: true, cookieHeader: "old=1" });
-    const result = await ensureSession("vanderbilt", store, DEPS);
+    const ceremony = vi.fn(async (options) => { expect(options.requireAssertion).toBe(true); return minted(); });
+    const result = await ensureSession("vanderbilt", store, { ...DEPS, ceremony });
     expect(result.source).toBe("minted");
     const got = await store.get("vanderbilt");
     expect(got?.cookieHeader).toBe("idx=v");
+  });
+
+  it("forces isolated assertion even over a fresh cache, preserving it until replacement succeeds", async () => {
+    const store = freshStore();
+    const old = { idp: "vanderbilt" as const, acquiredAt: NOW.toISOString(), expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "old=1" };
+    await store.put(old);
+    const ceremony = vi.fn(async (options) => {
+      expect(options.requireAssertion).toBe(true);
+      expect((await store.get("vanderbilt"))?.cookieHeader).toBe("old=1");
+      return minted();
+    });
+    expect((await ensureSession("vanderbilt", store, { ...DEPS, forceRefresh: true, ceremony })).source).toBe("minted");
+    expect(ceremony).toHaveBeenCalledTimes(1);
+    expect((await store.get("vanderbilt"))?.cookieHeader).toBe("idx=v");
+  });
+
+  it.each([true, false])("preserves the current row after failed recovery (force=%s)", async (forceRefresh) => {
+    const store = freshStore();
+    await store.put({ idp: "vanderbilt", acquiredAt: HOUR_AGO, expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "old=1" });
+    await expect(ensureSession("vanderbilt", store, { ...DEPS, forceRefresh, probe: async () => false,
+      ceremony: async () => { throw new AuthError("OKTA_FLOW_CHANGED", "synthetic", { retryable: false }); } })).rejects.toMatchObject({ code: "OKTA_FLOW_CHANGED" });
+    expect((await store.get("vanderbilt"))?.cookieHeader).toBe("old=1");
   });
 
   it("fails closed on a harvest without IdP cookies, without retrying", async () => {

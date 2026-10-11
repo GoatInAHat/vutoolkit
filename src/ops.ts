@@ -112,7 +112,7 @@ export const operations = [
   operation({
     name: "sessions.refresh",
     description:
-      "Force re-mint: forget the cached session for the IdP and run its ceremony again (OneVU passkey over CDP, or the Microsoft Entra carry) — auth stays invisible even when a session goes stale or unhealthy.",
+      "Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry.",
     input: z.object({
       idp: z.enum(["vanderbilt", "microsoft"]).default("vanderbilt"),
     }),
@@ -127,8 +127,7 @@ export const operations = [
     requires: ["secret", "net"],
     handler: async ({ idp }, ctx) => {
       const store = vaultStore(ctx);
-      await store.forget(idp);
-      const result = await ensureSession(idp, store);
+      const result = await ensureSession(idp, store, { forceRefresh: true });
       return { ...result, source: "minted" as const };
     },
   }),
