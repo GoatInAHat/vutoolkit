@@ -35,6 +35,8 @@ and changes nothing (openclaw 2026.8.2).
 
 ## Tools
 
+- `brightspace.api` — Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable. (native)
+- `brightspace.fetch` — Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable. (native)
 - `courses.detail` — Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner. (native)
 - `courses.search` — Search the live YES catalog for course IDs, titles, schools and typical offerings. Vanderbilt's keyword search can return broad matches; select by returned course code. (native)
 - `courses.sections` — Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes. (native)

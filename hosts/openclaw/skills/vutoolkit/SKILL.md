@@ -50,6 +50,22 @@ Report the operation, runtime version, whether the result was live or synthetic,
 <!-- tf:operations -->
 ## Operations
 
+### brightspace.api
+
+Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable.
+
+Arguments: `path`, `maxChars`.
+
+`vutoolkit brightspace.api --json '<arguments>'` prints a JSON result. MCP tool `brightspace.api` on server `vutoolkit` returns the same result as `structuredContent`.
+
+### brightspace.fetch
+
+Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable.
+
+Arguments: `path`, `maxChars`.
+
+`vutoolkit brightspace.fetch --json '<arguments>'` prints a JSON result. MCP tool `brightspace.fetch` on server `vutoolkit` returns the same result as `structuredContent`.
+
 ### courses.detail
 
 Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.

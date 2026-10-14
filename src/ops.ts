@@ -21,6 +21,7 @@ import { ensureGraphToken, graphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
 import { credentialEnv } from "./vault/credential-store.js";
+import { BrightspaceClient, BrightspaceNotConfiguredError } from "./brightspace/client.js";
 
 const transcriptSchema = z.object({
   postedCumulativeGpa: z.number().optional(),
@@ -240,6 +241,80 @@ export const operations = [
         await store.forget("vanderbilt");
         await ensureSession("vanderbilt", store);
         return { transcript: await readRecord(), source: "live" as const };
+      }
+    },
+  }),
+  operation({
+    name: "brightspace.fetch",
+    description:
+      "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable.",
+    input: z.object({
+      path: z
+        .string()
+        .describe("Path on brightspace.vanderbilt.edu, e.g. /d2l/home or /d2l/home/{orgUnitId}"),
+      maxChars: z.number().optional().describe("Text bound (default 8000)"),
+    }),
+    output: z.object({
+      status: z.number(),
+      finalUrl: z.string(),
+      title: z.string(),
+      text: z.string(),
+      trace: z.array(z.string()),
+    }),
+    requires: ["net", "secret"],
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    handler: async ({ path, maxChars }, ctx) => {
+      const store = vaultStore(ctx);
+      const client = () => new BrightspaceClient({ cookies: store.cookies("vanderbilt") });
+      await ensureSession("vanderbilt", store);
+      try {
+        return await client().fetchPage(path, maxChars);
+      } catch (e) {
+        // Re-mint once, but only when the failure is auth-shaped: a D2L 404 must not burn the
+        // cached session (the ceremony needs a live browser hop).
+        const msg = e instanceof Error ? e.message : String(e);
+        const authShaped =
+          e instanceof BrightspaceNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
+        if (!authShaped) throw e;
+        await store.forget("vanderbilt");
+        await ensureSession("vanderbilt", store);
+        return await client().fetchPage(path, maxChars);
+      }
+    },
+  }),
+  operation({
+    name: "brightspace.api",
+    description:
+      "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable.",
+    input: z.object({
+      path: z
+        .string()
+        .describe("API path on brightspace.vanderbilt.edu, e.g. /d2l/api/lp/1.44/enrollments/myenrollments/"),
+      maxChars: z.number().optional().describe("Response text bound (default 16000)"),
+    }),
+    output: z.object({
+      status: z.number(),
+      contentType: z.string(),
+      text: z.string(),
+      finalUrl: z.string(),
+      trace: z.array(z.string()),
+    }),
+    requires: ["net", "secret"],
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    handler: async ({ path, maxChars }, ctx) => {
+      const store = vaultStore(ctx);
+      const client = () => new BrightspaceClient({ cookies: store.cookies("vanderbilt") });
+      await ensureSession("vanderbilt", store);
+      try {
+        return await client().fetchApi(path, maxChars);
+      } catch (e) {
+        // Re-mint once on auth-shaped failures only (a D2L 404 must not burn the session).
+        const msg = e instanceof Error ? e.message : String(e);
+        const authShaped = e instanceof BrightspaceNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
+        if (!authShaped) throw e;
+        await store.forget("vanderbilt");
+        await ensureSession("vanderbilt", store);
+        return await client().fetchApi(path, maxChars);
       }
     },
   }),

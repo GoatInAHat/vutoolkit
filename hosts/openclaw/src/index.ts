@@ -46,6 +46,56 @@ const entry = defineToolPlugin({
   }),
   tools: (tool) => [
     tool({
+      name: "vutoolkit_brightspace_api",
+      description: "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API path on brightspace.vanderbilt.edu, e.g. /d2l/api/lp/1.44/enrollments/myenrollments/"
+          },
+          "maxChars": {
+            "description": "Response text bound (default 16000)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("brightspace.api").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_brightspace_fetch",
+      description: "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path on brightspace.vanderbilt.edu, e.g. /d2l/home or /d2l/home/{orgUnitId}"
+          },
+          "maxChars": {
+            "description": "Text bound (default 8000)",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }),
+      execute: async (params, config) =>
+        operation("brightspace.fetch").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
       name: "vutoolkit_courses_detail",
       description: "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.",
       parameters: Type.Unsafe({
