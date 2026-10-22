@@ -138,7 +138,13 @@ export function configureIdentity(options: { email?: string; vunetId?: string },
     throw new SetupError("EXISTING_ACCOUNT", "An existing passkey is bound to this configured account. Setup will not replace its identity.");
   const write = deps.write ?? writeVault;
   write("VANDERBILT_EMAIL", email);
-  if (vunetId) write("VANDERBILT_VUNETID", vunetId);
+  if (readOptional("VANDERBILT_EMAIL", deps) !== email)
+    throw new SetupError("VAULT_VERIFY_FAILED", "The configured email could not be confirmed in the host vault; no identity was changed.");
+  if (vunetId) {
+    write("VANDERBILT_VUNETID", vunetId);
+    if (readOptional("VANDERBILT_VUNETID", deps) !== vunetId)
+      throw new SetupError("VAULT_VERIFY_FAILED", "The configured VUnetID could not be confirmed in the host vault; the email was written but VUnetID was not confirmed.");
+  }
   return { identityConfigured: true, emailConfigured: true, vunetIdConfigured: Boolean(vunetId || auth.vunetId), emailDerivedFromVunetId: !options.email };
 }
 

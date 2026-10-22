@@ -62,6 +62,18 @@ describe("OneVU setup", () => {
     expect(() => configureIdentity({ email: "different@vanderbilt.edu" }, existing.deps)).toThrow(/existing passkey/i);
     expect(existing.write).not.toHaveBeenCalled();
   });
+
+  it("rejects identity configuration when the vault readback does not confirm the write", () => {
+    const h = harness({ corruptReadback: true });
+    expect(() => configureIdentity({ email: "synthetic@vanderbilt.edu" }, h.deps)).toThrow(/VAULT_VERIFY_FAILED/);
+  });
+
+  it("confirms the configured email was genuinely written when the vault readback matches", () => {
+    const h = harness();
+    const result = configureIdentity({ email: "synthetic@vanderbilt.edu" }, h.deps);
+    expect(result.identityConfigured).toBe(true);
+    expect(h.vault.get("VANDERBILT_EMAIL")).toBe("synthetic@vanderbilt.edu");
+  });
   it("validates existing material and reports metadata only", async () => {
     const h = harness({ existing: JSON.stringify(credential) });
     const result = await setupStatus(h.deps);
