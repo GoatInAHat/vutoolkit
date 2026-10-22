@@ -7,6 +7,7 @@ import type { CookieRecord } from "../vault/file-store.js";
 import { VaultNotWiredError } from "../vault/index.js";
 import { classifyAuthorize, ensureGraphToken, GraphTokenCache, MAX_ENVELOPE_BYTES } from "./token.js";
 import type { CredentialStorage } from "../vault/credential-store.js";
+import { graphCall } from "./client.js";
 
 const REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/token";
@@ -166,6 +167,63 @@ describe("ensureGraphToken", () => {
         : okToken("FRESH")) as unknown as typeof fetch;
     const token = await ensureGraphToken(entsCookies, cache, { fetchImpl, force: true });
     expect(token).toMatchObject({ accessToken: "FRESH", source: "minted" });
+  });
+});
+
+describe("ensureGraphToken failure modes", () => {
+  /** A silent authorize that lands on the sign-in page instead of the redirect URI: a refusal. */
+  const signInPageFetch = (onAuthorize?: () => void) =>
+    (async (url: string | URL | Request) => {
+      if (String(url).includes("/authorize")) {
+        onAuthorize?.();
+        return new Response('<form><input name="loginfmt" id="i0116"><input name="urlPost"></form>', { status: 200 });
+      }
+      throw new Error("a refused authorize must not reach the token exchange");
+    }) as unknown as typeof fetch;
+
+  it("a sign-in page refusal is a retryable GRAPH_TOKEN_UNAVAILABLE that caches nothing", async () => {
+    const cache = newCache();
+    const error = (await ensureGraphToken(entsCookies, cache, { fetchImpl: signInPageFetch() }).catch(
+      (e: unknown) => e,
+    )) as AuthError;
+    expect(error).toBeInstanceOf(AuthError);
+    expect(error.code).toBe("GRAPH_TOKEN_UNAVAILABLE");
+    expect(error.retryable).toBe(true);
+    // The message names the remedy and carries no session or token material.
+    expect(error.message).toContain("sessions.refresh");
+    for (const secret of [...entsCookies.map((c) => c.value), "ent-1", "owa-1"]) expect(error.message).not.toContain(secret);
+    expect(cache.read()).toBeNull();
+  });
+
+  it("a refusal leaves a previously cached token untouched instead of inventing a fresh one", async () => {
+    const cache = newCache();
+    const stale = { accessToken: "STALE", acquiredAtMs: 1, expiresAtMs: 2 };
+    cache.put(stale);
+    await expect(ensureGraphToken(entsCookies, cache, { fetchImpl: signInPageFetch() })).rejects.toMatchObject({
+      code: "GRAPH_TOKEN_UNAVAILABLE",
+    });
+    expect(cache.read()).toEqual(stale);
+  });
+
+  it("graph.call's token provider bubbles the typed refusal and makes no Graph request", async () => {
+    const cache = newCache();
+    let authorizes = 0;
+    const graphFetches: string[] = [];
+    // Same shape as src/ops.ts graph.call: ensureGraphToken(...).then(t => t.accessToken).
+    const getToken = (opts: { force?: boolean }) =>
+      ensureGraphToken(entsCookies, cache, { ...opts, fetchImpl: signInPageFetch(() => authorizes++) }).then(
+        (token) => token.accessToken,
+      );
+    const fetchImpl = (async (url: string | URL | Request) => {
+      graphFetches.push(String(url));
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    await expect(
+      graphCall("GET", "/me", undefined, undefined, getToken, { fetchImpl, sleep: async () => {} }),
+    ).rejects.toMatchObject({ code: "GRAPH_TOKEN_UNAVAILABLE", retryable: true });
+    expect(authorizes).toBe(1);
+    expect(graphFetches).toHaveLength(0);
+    expect(cache.read()).toBeNull();
   });
 });
 

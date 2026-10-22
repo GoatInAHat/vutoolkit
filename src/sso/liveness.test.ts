@@ -79,9 +79,21 @@ describe("probeMicrosoft", () => {
 
   it("gives up and reports not-alive when throttling outlasts the bounded retries", async () => {
     const { fetch, calls } = throttledGraphFetch([429, 429, 429], "0");
-    expect(await probeMicrosoft(cookies, fetch, async () => {})).toBe(false);
+    const waits: number[] = [];
+    expect(await probeMicrosoft(cookies, fetch, async (ms) => { waits.push(ms); })).toBe(false);
     // One attempt plus two retries, then a truthful false rather than an unbounded wait.
     expect(calls()).toBe(3);
+    // The cap is exactly 2 retries: no third sleep, no fourth proof GET.
+    expect(waits).toEqual([0, 0]);
+  });
+
+  it("stays bounded when every possible throttle answer is delivered", async () => {
+    // Ten 429s offered, only the cap's worth of retries are spent: 3 proof GETs, 2 waits.
+    const { fetch, calls } = throttledGraphFetch(Array.from({ length: 10 }, () => 429), "0");
+    const waits: number[] = [];
+    expect(await probeMicrosoft(cookies, fetch, async (ms) => { waits.push(ms); })).toBe(false);
+    expect(calls()).toBe(3);
+    expect(waits).toHaveLength(2);
   });
 
   it("rejects an empty cookie set without network access", async () => {
