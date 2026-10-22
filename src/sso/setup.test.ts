@@ -90,6 +90,20 @@ describe("OneVU setup", () => {
     expect(h.evaluate.mock.calls.some(([expression]) => expression.includes("button.click()"))).toBe(false);
   });
 
+  it("directs an existing-key holder to sign in when the page is not authenticated", async () => {
+    const h = harness({ existing: JSON.stringify(credential), signedIn: false });
+    const prepared = await prepareSetup({ keepTab: false }, h.deps);
+    expect(prepared.status).toBe("sign-in-required");
+    expect(prepared.existingPasskeyPreserved).toBe(true);
+    // The signed-out branch must still hand the holder the Control-UI sign-in path, not a
+    // message that only makes sense once the page is already authenticated.
+    expect(prepared.nextStep).toMatch(/Control UI.*Browser panel.*openclaw profile/i);
+    expect(prepared.nextStep).toMatch(/passkey is unchanged/i);
+    expect(h.write).not.toHaveBeenCalled();
+    expect(h.calls).toContain("WebAuthn.addCredential");
+    expect(h.calls).toContain("WebAuthn.removeVirtualAuthenticator");
+  });
+
   it("requires explicit confirmation and refuses to replace any existing entry", async () => {
     await expect(enrollSetup({ confirm: false }, harness().deps)).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });
     const h = harness({ existing: "malformed-but-preserved" });

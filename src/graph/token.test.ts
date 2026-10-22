@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AuthError } from "../sso/errors.js";
 import type { CookieRecord } from "../vault/file-store.js";
-import { classifyAuthorize, ensureGraphToken, GraphTokenCache } from "./token.js";
+import { VaultNotWiredError } from "../vault/index.js";
+import { classifyAuthorize, ensureGraphToken, GraphTokenCache, MAX_ENVELOPE_BYTES } from "./token.js";
+import type { CredentialStorage } from "../vault/credential-store.js";
 
 const REDIRECT = "https://login.microsoftonline.com/common/oauth2/nativeclient";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/token";
@@ -164,5 +166,48 @@ describe("ensureGraphToken", () => {
         : okToken("FRESH")) as unknown as typeof fetch;
     const token = await ensureGraphToken(entsCookies, cache, { fetchImpl, force: true });
     expect(token).toMatchObject({ accessToken: "FRESH", source: "minted" });
+  });
+});
+
+describe("GraphTokenCache bounds", () => {
+  /** Largest accessToken whose single-line JSON envelope is exactly `bytes` long. */
+  const tokenSizedTo = (bytes: number): { accessToken: string; acquiredAtMs: number; expiresAtMs: number } => {
+    const fixed = { acquiredAtMs: 1_700_000_000_000, expiresAtMs: 1_700_003_600_000 };
+    const skeletonLength = Buffer.byteLength(JSON.stringify({ accessToken: "", ...fixed }), "utf8");
+    return { accessToken: "A".repeat(bytes - skeletonLength), ...fixed };
+  };
+
+  it("refuses an oversized envelope in file mode and leaves no readable entry", () => {
+    const cache = newCache();
+    const token = tokenSizedTo(MAX_ENVELOPE_BYTES + 1);
+    expect(Buffer.byteLength(JSON.stringify(token), "utf8")).toBe(MAX_ENVELOPE_BYTES + 1);
+    let error: unknown;
+    try { cache.put(token); } catch (e) { error = e; }
+    expect(error).toBeInstanceOf(VaultNotWiredError);
+    expect((error as Error).message).toContain(String(MAX_ENVELOPE_BYTES));
+    expect((error as Error).message).toContain("no credential was written");
+    expect(cache.read()).toBeNull();
+  });
+
+  it("never calls the credential storage write for an oversized envelope", () => {
+    const writes: string[] = [];
+    const storage: CredentialStorage = {
+      location: "fake:vault",
+      read: () => null,
+      write: (value) => { writes.push(value); },
+    };
+    const cache = new GraphTokenCache(join(tmpdir(), "unused-graph-token.json"), storage);
+    const token = tokenSizedTo(MAX_ENVELOPE_BYTES + 1);
+    expect(() => cache.put(token)).toThrow(VaultNotWiredError);
+    expect(writes).toHaveLength(0);
+    expect(cache.read()).toBeNull();
+  });
+
+  it("writes and reads back an envelope at exactly the boundary", () => {
+    const cache = newCache();
+    const token = tokenSizedTo(MAX_ENVELOPE_BYTES);
+    expect(Buffer.byteLength(JSON.stringify(token), "utf8")).toBe(MAX_ENVELOPE_BYTES);
+    cache.put(token);
+    expect(cache.read()).toEqual(token);
   });
 });

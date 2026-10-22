@@ -26,6 +26,26 @@ function graphFetch(meStatus = 200): typeof fetch {
   }) as typeof fetch;
 }
 
+/** Answers /me with the given statuses in order, then 200; records how many proof GETs ran. */
+function throttledGraphFetch(statuses: number[], retryAfter?: string): { fetch: typeof fetch; calls: () => number } {
+  const meCalls: string[] = [];
+  const inner = graphFetch();
+  let throttles = 0;
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input) === "https://graph.microsoft.com/v1.0/me?$select=id") {
+      meCalls.push("proof");
+      if (throttles < statuses.length) {
+        const status = statuses[throttles++];
+        const headers = new Headers();
+        if (retryAfter !== undefined) headers.set("retry-after", retryAfter);
+        return new Response("{}", { status, headers });
+      }
+    }
+    return inner(input, init);
+  }) as typeof fetch;
+  return { fetch: fetchImpl, calls: () => meCalls.length };
+}
+
 describe("probeMicrosoft", () => {
   it("proves liveness through the silent Graph token flow and read-only /me", async () => {
     expect(await probeMicrosoft(cookies, graphFetch())).toBe(true);
@@ -33,6 +53,35 @@ describe("probeMicrosoft", () => {
 
   it("rejects a Graph session whose proof request is unauthorized", async () => {
     expect(await probeMicrosoft(cookies, graphFetch(401))).toBe(false);
+  });
+
+  it("treats a throttled proof GET as alive after honoring retry-after bounded retries", async () => {
+    const { fetch, calls } = throttledGraphFetch([429, 429], "0");
+    const waits: number[] = [];
+    expect(await probeMicrosoft(cookies, fetch, async (ms) => { waits.push(ms); })).toBe(true);
+    // Two throttled answers then the 200: one token mint, three proof GETs, both waits honored.
+    expect(calls()).toBe(3);
+    expect(waits).toEqual([0, 0]);
+  });
+
+  it("caps a missing or oversized retry-after instead of trusting it", async () => {
+    const { fetch } = throttledGraphFetch([429], undefined);
+    const waits: number[] = [];
+    expect(await probeMicrosoft(cookies, fetch, async (ms) => { waits.push(ms); })).toBe(true);
+    // No retry-after header: wait the cap (30s), never a negative or unbounded delay.
+    expect(waits).toEqual([30_000]);
+
+    const big = throttledGraphFetch([429], "9999");
+    const capped: number[] = [];
+    expect(await probeMicrosoft(cookies, big.fetch, async (ms) => { capped.push(ms); })).toBe(true);
+    expect(capped).toEqual([30_000]);
+  });
+
+  it("gives up and reports not-alive when throttling outlasts the bounded retries", async () => {
+    const { fetch, calls } = throttledGraphFetch([429, 429, 429], "0");
+    expect(await probeMicrosoft(cookies, fetch, async () => {})).toBe(false);
+    // One attempt plus two retries, then a truthful false rather than an unbounded wait.
+    expect(calls()).toBe(3);
   });
 
   it("rejects an empty cookie set without network access", async () => {
