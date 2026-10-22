@@ -12,7 +12,7 @@ import { yesOperations } from "./yes/operations.js";
 import { z } from "zod";
 import { verifyTranscript, whatIf } from "./gpa/engine.js";
 import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
-import { YesClient } from "./yes/client.js";
+import { YesClient, YesNotConfiguredError } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
 import { sessionStore, harvestToStoredSession } from "./vault/file-store.js";
 import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
@@ -237,7 +237,12 @@ export const operations = [
       await ensureSession("vanderbilt", store);
       try {
         return { transcript: await readRecord(), source: "live" as const };
-      } catch {
+      } catch (e) {
+        // Re-mint once, but only when the failure is auth-shaped: a transient aai-record.ts
+        // parse/markup hiccup must not burn a cached session that was actually fine.
+        const msg = e instanceof Error ? e.message : String(e);
+        const authShaped = e instanceof YesNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
+        if (!authShaped) throw e;
         await store.forget("vanderbilt");
         await ensureSession("vanderbilt", store);
         return { transcript: await readRecord(), source: "live" as const };
