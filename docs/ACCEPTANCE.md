@@ -93,6 +93,9 @@ Live account enrollment and installed-version receipts are recorded separately i
 
 On 2026-09-27, v0.4.0 passed 178 unit tests, 28 surface validators, the production synthetic browser checks (including exactly one setup operation from the Connect action), and all 13 read-only live tests. `setup.run({confirm:true,allowInteractiveVerification:false})` on the existing release account returned `ready`, verified a real isolated passkey assertion, and established both Vanderbilt and Microsoft sessions. This is existing-key acceptance, not new-key enrollment proof.
 
+## S02 hardening coverage
+
+Slice S02 (cart and course section selection controls) adds synthetic unit and browser hardening coverage on top of the already-shipped cart/section-selection and preference-persistence UI, closing gaps identified during slice research. New unit tests close professor-lookup failure-mode coverage (`src/yes/professors.test.ts`), parser day-notation/missing-field/mismatched-count edge cases (`src/yes/more-parser.test.ts`), and scheduler multi-term-guard/multi-component-linkage/mixed-component `cartDifference` edge cases (`src/yes/scheduler.test.ts`). `scripts/test-yes-browser.mjs` now also exercises `clickCartAction`'s retry-timeout error path and the professor-lookup failure fallback UI. This is synthetic hardening, not a live cart mutation: the "Real cart acceptance" gap above remains open and unverified by this work.
 
 ## v0.4.0 distribution status
 
