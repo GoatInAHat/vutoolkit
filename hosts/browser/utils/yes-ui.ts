@@ -1,5 +1,5 @@
 import { parseSectionResults } from "../../../src/yes/more-parser";
-import { cartDifference, solveSchedules, type Meeting, type ScheduleSection } from "../../../src/yes/scheduler";
+import { cartDifference, sectionsConflict, solveSchedules, type Meeting, type ScheduleSection } from "../../../src/yes/scheduler";
 export interface SchedulerPreferences { excludedCourses: string[]; excludedSectionIds: string[]; blockedTimes: Meeting[]; hidePreferenceConflicts: boolean; keepExcluded: boolean }
 const defaults: SchedulerPreferences = { excludedCourses: [], excludedSectionIds: [], blockedTimes: [], hidePreferenceConflicts: false, keepExcluded: true };
 const cartRoot = () => document.querySelector<HTMLElement>("#studentCart_content, #studentCart, #cartDiv");
@@ -81,6 +81,25 @@ export function mountYesScheduler({ loadPreferences, savePreferences, professorS
           return Boolean(row?.querySelector(addable ? 'a[title="Add this class to your cart"]' : 'a[title="Remove Class From Cart"]'));
         }); try { for (const s of sections) await clickCartAction(s.id, addable ? "add" : "remove", addable ? document.body : cartRoot() ?? document.body); status.textContent = "Cart changes verified; enrollment unchanged." } catch (e) { status.textContent = e instanceof Error ? e.message : String(e) } finally { control.disabled = false }
       }); control.className = "vutoolkit-add-alternatives"; control.style.cssText = "margin-left:12px;padding:3px 8px;cursor:pointer"; title.append(control);
+    });
+    const cartSections = cartRoot() ? sectionsAt(cartRoot()!) : [];
+    document.querySelectorAll<HTMLTableElement>("table.classTable").forEach((table) => {
+      for (const section of sectionsAt(table)) {
+        const row = table.querySelector(`[id="classNumber_${CSS.escape(section.id)}"]`)?.closest("tr");
+        if (!row) continue;
+        const inCart = Boolean(row.querySelector('a[title="Remove Class From Cart"]'));
+        const conflicts = inCart ? [] : cartSections.filter((cart) => sectionsConflict(section, cart));
+        if (conflicts.length) {
+          const reason = `Conflicts with ${conflicts.map((c) => `${c.course}-${c.section} ${c.component}`).join(", ")}`;
+          (row as HTMLElement).dataset.vutoolkitConflict = reason;
+          (row as HTMLElement).title = reason;
+          (row as HTMLElement).style.cssText = "background:#fdecea;border-left:3px solid #b42318";
+        } else if ((row as HTMLElement).dataset.vutoolkitConflict) {
+          delete (row as HTMLElement).dataset.vutoolkitConflict;
+          (row as HTMLElement).title = "";
+          (row as HTMLElement).style.cssText = "";
+        }
+      }
     });
     if (professorSearch) document.querySelectorAll<HTMLElement>(".classInstructor").forEach((cell) => {
       if (cell.dataset.vutoolkitRating) return; const name = cell.textContent?.trim(); if (!name || /TBA|staff/i.test(name)) return; cell.dataset.vutoolkitRating = "pending";
