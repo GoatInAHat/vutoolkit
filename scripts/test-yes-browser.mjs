@@ -5,17 +5,18 @@ import { chromium } from '../web/node_modules/playwright/index.mjs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
-import { FileSessionStore } from '../src/vault/file-store.ts';
 import { buildDegreeGraph } from '../src/yes/planner.ts';
 const profile = await mkdtemp(join(tmpdir(), 'vutoolkit-extension-test-'));
 const extension = resolve('hosts/browser/.output/chrome-mv3');
 const browser = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
 const failures = [];
 let professorRequests = 0;
+let failAtProfessorRequest = 0;
 const professorKernel = createServer(async (request, response) => {
   let body = ''; for await (const chunk of request) body += chunk;
   const rpc = JSON.parse(body);
   assert.equal(rpc.params.name, 'professors.search'); professorRequests++;
+  if (professorRequests === failAtProfessorRequest) { response.statusCode = 503; response.end('Rate My Professors kernel unavailable'); return; }
   response.setHeader('Content-Type', 'application/json');
   response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { structuredContent: { professors: [{ name: 'Example Professor', exactNameMatch: true, rating: 4.5, count: 20, difficulty: 3, wouldTakeAgainPercent: 80, url: 'https://www.ratemyprofessors.com/professor/42' }] } } }));
 });
@@ -75,7 +76,23 @@ try {
   await save();
   await page.getByRole('button', { name: 'Remove course from cart', exact: true }).first().click();
   await page.waitForFunction(() => window.cartRemovals.length === 1);
-  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection; enrollment untouched (isolated fixture).');
+
+  const brokenRow = (id, section, days, time) => `<tr class="classRow"><td id="classNumber_${id}" class="classSection">${section}</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">${days}</td><td class="classMeetingTimes">${time}</td><td class="classBuilding">Engineering 101</td><td class="classInstructor">Staff</td><td class="classAvailability">Open</td><td class="classActions"><div class="classActionButtons"><a title="Remove Class From Cart" href="#" onclick="return false">remove</a></div></td></tr>`;
+  html = fixture(table('CS 1101', brokenRow('20', '01', 'MWF', '8:00a - 9:00a') + row('21', '02', 'TR', '9:00a - 10:00a')));
+  await visit(); await schedule();
+  assert.equal(await choices.count(), 2, 'Two single-section schedules, one per cart section');
+  const verifiedScheduleCard = page.locator('.card', { hasText: 'CS 1101-02' });
+  await verifiedScheduleCard.getByRole('button', { name: 'Use this schedule in my cart', exact: true }).click();
+  await verifiedScheduleCard.getByText('Could not verify the cart remove', { exact: false }).waitFor({ timeout: 10_000 });
+
+  failAtProfessorRequest = professorRequests + 1;
+  html = fixture('', table('CS 1101', row('30', '01', 'MWF', '10:00a - 11:00a', 'add'))).replaceAll('>Staff<', '>Failing Professor<');
+  await visit();
+  await page.locator('.classInstructor[data-vutoolkit-rating="unavailable"]').waitFor({ timeout: 10_000 });
+  await page.getByRole('link', { name: 'RMP lookup', exact: true }).waitFor();
+  assert.equal(professorRequests, failAtProfessorRequest, 'Exactly the failing professor lookup request was attempted');
+
+  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback; enrollment untouched (isolated fixture).');
   await page.close();
 
   const web = await browser.newPage(); web.on('pageerror', (e) => failures.push(e.message));
@@ -144,6 +161,7 @@ try {
   await web.close();
 
   if (process.env.VUTOOLKIT_LIVE) {
+    const { FileSessionStore } = await import('../src/vault/file-store.ts');
     const store = new FileSessionStore(join(process.env.VUTOOLKIT_DATA_DIR ?? join(homedir(), '.local/share/vutoolkit'), 'sessions.vault.json'));
     const cookies = store.cookies('vanderbilt').map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path || '/', secure: Boolean(c.secure), httpOnly: Boolean(c.httpOnly), ...(c.expires && c.expires > 0 ? { expires: c.expires } : {}) }));
     await browser.addCookies(cookies);
