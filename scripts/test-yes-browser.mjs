@@ -12,13 +12,20 @@ const browser = await chromium.launchPersistentContext(profile, { channel: 'chro
 const failures = [];
 let professorRequests = 0;
 let failAtProfessorRequest = 0;
+let professorMode = 'exact';
 const professorKernel = createServer(async (request, response) => {
   let body = ''; for await (const chunk of request) body += chunk;
   const rpc = JSON.parse(body);
   assert.equal(rpc.params.name, 'professors.search'); professorRequests++;
   if (professorRequests === failAtProfessorRequest) { response.statusCode = 503; response.end('Rate My Professors kernel unavailable'); return; }
   response.setHeader('Content-Type', 'application/json');
-  response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { structuredContent: { professors: [{ name: 'Example Professor', exactNameMatch: true, rating: 4.5, count: 20, difficulty: 3, wouldTakeAgainPercent: 80, url: 'https://www.ratemyprofessors.com/professor/42' }] } } }));
+  const professors = professorMode === 'ambiguous'
+    ? [
+        { name: 'Jordan Rivera', exactNameMatch: false, rating: 4.2, count: 15, difficulty: 2.5, wouldTakeAgainPercent: 75, url: 'https://www.ratemyprofessors.com/professor/101' },
+        { name: 'Jordan Rivers', exactNameMatch: false, rating: 3.1, count: 8, difficulty: 3.5, wouldTakeAgainPercent: 50, url: 'https://www.ratemyprofessors.com/professor/102' },
+      ]
+    : [{ name: 'Example Professor', exactNameMatch: true, rating: 4.5, count: 20, difficulty: 3, wouldTakeAgainPercent: 80, url: 'https://www.ratemyprofessors.com/professor/42' }];
+  response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result: { structuredContent: { professors } } }));
 });
 await new Promise((resolve) => professorKernel.listen(0, '127.0.0.1', resolve));
 const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
@@ -115,7 +122,24 @@ try {
   await page.getByRole('link', { name: 'RMP lookup', exact: true }).waitFor();
   assert.equal(professorRequests, failAtProfessorRequest, 'Exactly the failing professor lookup request was attempted');
 
-  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback, cart conflict highlighting; enrollment untouched (isolated fixture).');
+  professorMode = 'ambiguous';
+  html = fixture('', table('CS 1101', row('40', '01', 'MWF', '10:00a - 11:00a', 'add'))).replaceAll('>Staff<', '>Ambiguous Professor<');
+  await visit();
+  const picker = page.locator('.classInstructor select');
+  await picker.waitFor();
+  assert.equal(await picker.locator('option').count(), 4, 'Placeholder, two RMP candidates, and the no-match escape option');
+  await page.selectOption('.classInstructor select', { index: 1 });
+  await page.getByRole('link', { name: 'RMP 4.2 (15)', exact: true }).waitFor();
+  await page.waitForTimeout(300);
+  const requestsBeforeReload = professorRequests;
+  await visit();
+  assert.equal(professorRequests, requestsBeforeReload, 'Cached professor mapping skips a repeat RMP lookup after reload');
+  await page.getByRole('link', { name: 'RMP 4.2 (15)', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Add all sections to cart', exact: true }).click();
+  await page.getByText('Cart changes verified; enrollment unchanged.', { exact: true }).waitFor();
+  professorMode = 'exact';
+
+  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback, cart conflict highlighting, professor candidate picker, mapping persistence across reload; enrollment untouched (isolated fixture).');
   await page.close();
 
   const web = await browser.newPage(); web.on('pageerror', (e) => failures.push(e.message));
