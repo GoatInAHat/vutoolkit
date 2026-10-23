@@ -2,10 +2,12 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { chromium } from '../web/node_modules/playwright/index.mjs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, mkdir } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { buildDegreeGraph } from '../src/yes/planner.ts';
+const screenshotsDir = resolve('hosts/browser/screenshots');
+await mkdir(screenshotsDir, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), 'vutoolkit-extension-test-'));
 const extension = resolve('hosts/browser/.output/chrome-mv3');
 const browser = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`] });
@@ -16,7 +18,8 @@ let professorMode = 'exact';
 const professorKernel = createServer(async (request, response) => {
   let body = ''; for await (const chunk of request) body += chunk;
   const rpc = JSON.parse(body);
-  assert.equal(rpc.params.name, 'professors.search'); professorRequests++;
+  if (rpc.params.name !== 'professors.search') { response.setHeader('Content-Type', 'application/json'); return response.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, error: { code: -32601, message: 'Method not found' } })); }
+  professorRequests++;
   if (professorRequests === failAtProfessorRequest) { response.statusCode = 503; response.end('Rate My Professors kernel unavailable'); return; }
   response.setHeader('Content-Type', 'application/json');
   const professors = professorMode === 'ambiguous'
@@ -35,7 +38,7 @@ const table = (course, rows) => `<table class="classTable"><tr><td><div class="c
 const fixture = (cart, search = '') => `<html><body><script>window.cartRemovals=[];window.cartAdds=[];window.enrolled=false;window.addRow=(link)=>{const row=link.closest('tr').cloneNode(true);const table=link.closest('table').cloneNode(true);table.querySelectorAll('.classRow,.vutoolkit-add-alternatives').forEach(r=>r.remove());const remove=row.querySelector('a[title="Add this class to your cart"]');remove.title='Remove Class From Cart';remove.onclick=()=>{window.cartRemovals.push(row.querySelector('.classSection').id);row.remove();return false};table.append(row);document.querySelector('#studentCart_content').append(table);link.remove()}</script><select id="selectedTerm"><option value="1268">Fall</option><option value="1272">Spring</option></select><div id="searchResults">${search}</div><div id="studentCart_content">${cart}</div><button id="enrollButton-button" onclick="window.enrolled=true">Enroll</button></body></html>`;
 const baseCart = table('CS 1101', row('1','01','MWF','10:00a - 11:00a') + row('2','02','MWF','12:00p - 1:00p')) + table('MATH 1300', row('3','01','TR','10:00a - 11:00a'));
 try {
-  const page = await browser.newPage(); page.on('pageerror', (e) => failures.push(e.message));
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }); page.on('pageerror', (e) => failures.push(e.message));
   let html = fixture(baseCart);
   await page.route('https://more.app.vanderbilt.edu/**', (route) => route.fulfill({ contentType: 'text/html', body: html }));
   const visit = () => page.goto('https://more.app.vanderbilt.edu/more/SearchClasses!input.action');
@@ -91,11 +94,13 @@ try {
   await page.waitForFunction(() => document.querySelector('[id="classNumber_6"]')?.closest('tr')?.dataset.vutoolkitConflict);
   assert.ok((await conflictRow.getAttribute('data-vutoolkit-conflict'))?.includes('CS 1101'), 'Overlapping alternative is marked conflicting with the cart');
   assert.equal(await clearRow.getAttribute('data-vutoolkit-conflict'), null, 'Non-conflicting alternative is not marked');
+  await page.screenshot({ path: join(screenshotsDir, '01-yes-results-conflict-highlighting.png') });
   await schedule();
   assert.equal(await choices.count(), 2, 'Conflict marking does not change schedule enumeration');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Add all sections to cart', exact: true }).click();
   await page.getByText('Cart changes verified; enrollment unchanged.', { exact: true }).waitFor();
+  await page.screenshot({ path: join(screenshotsDir, '02-bulk-cart-controls.png') });
 
   const scaleRows = Array.from({ length: 50 }, (_, i) => {
     const hour = (i % 12) + 1;
@@ -130,6 +135,7 @@ try {
   assert.equal(await picker.locator('option').count(), 4, 'Placeholder, two RMP candidates, and the no-match escape option');
   await page.selectOption('.classInstructor select', { index: 1 });
   await page.getByRole('link', { name: 'RMP 4.2 (15)', exact: true }).waitFor();
+  await page.screenshot({ path: join(screenshotsDir, '03-professor-disambiguation-picker.png') });
   await page.waitForTimeout(300);
   const requestsBeforeReload = professorRequests;
   await visit();
@@ -142,7 +148,7 @@ try {
   console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback, cart conflict highlighting, professor candidate picker, mapping persistence across reload; enrollment untouched (isolated fixture).');
   await page.close();
 
-  const web = await browser.newPage(); web.on('pageerror', (e) => failures.push(e.message));
+  const web = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }); web.on('pageerror', (e) => failures.push(e.message));
   const calls = [];
   let identityConfigured = false;
   const audit = { nodes: [{ id: 'requirement:1', kind: 'line', label: 'Synthetic requirement', state: 'needed', hasPossibleCourses: true, coursesNeeded: 1, reportSequence: 1, entrySequence: 2 }, { id: 'course:123', kind: 'course', label: 'CS 2201', state: 'planned', metadata: { courseId: 123, offerNumber: 1 } }], edges: [], note: 'Synthetic official audit' };
@@ -174,6 +180,7 @@ try {
   await web.getByRole('button', { name: 'Load my degree audit', exact: true }).click();
   await web.getByRole('button', { name: 'Show official course alternatives', exact: true }).click();
   await web.getByText('1 official alternatives, also added to the graph.', { exact: true }).waitFor();
+  await web.screenshot({ path: join(screenshotsDir, '04-degree-planner-graph.png') });
   assert.equal(await web.locator('svg g[role="button"]').count(), 3, 'Official alternatives expand graph');
   await web.getByRole('button', { name: 'CS 2201 planned', exact: true }).click();
   await web.getByRole('button', { name: 'Official course details', exact: true }).click();
@@ -198,6 +205,7 @@ try {
   await web.getByRole('button', { name: 'Save account', exact: true }).click();
   const createPasskey = web.getByRole('button', { name: 'Connect account', exact: true });
   await createPasskey.waitFor({ timeout: 5_000 });
+  await web.screenshot({ path: join(screenshotsDir, '05-setup-connect-vanderbilt.png') });
   assert.equal(await createPasskey.isDisabled(), true, 'Passkey creation requires identity and consent');
   await web.getByLabel('I authorize connecting this account and adding a toolkit passkey if needed.').check();
   await createPasskey.click();
