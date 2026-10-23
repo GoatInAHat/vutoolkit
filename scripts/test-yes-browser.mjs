@@ -77,7 +77,30 @@ try {
   await page.getByRole('button', { name: 'Remove course from cart', exact: true }).first().click();
   await page.waitForFunction(() => window.cartRemovals.length === 1);
 
-  const brokenRow = (id, section, days, time) => `<tr class="classRow"><td id="classNumber_${id}" class="classSection">${section}</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">${days}</td><td class="classMeetingTimes">${time}</td><td class="classBuilding">Engineering 101</td><td class="classInstructor">Staff</td><td class="classAvailability">Open</td><td class="classActions"><div class="classActionButtons"><a title="Remove Class From Cart" href="#" onclick="return false">remove</a></div></td></tr>`;
+  html = fixture(baseCart, table('CS 1101', row('6', '03', 'MWF', '10:30a - 11:30a', 'add') + row('7', '04', 'MWF', '2:00p - 3:00p', 'add')));
+  await visit();
+  const conflictRow = page.locator('[id="classNumber_6"]').locator('xpath=ancestor::tr[1]');
+  const clearRow = page.locator('[id="classNumber_7"]').locator('xpath=ancestor::tr[1]');
+  await page.waitForFunction(() => document.querySelector('[id="classNumber_6"]')?.closest('tr')?.dataset.vutoolkitConflict);
+  assert.ok((await conflictRow.getAttribute('data-vutoolkit-conflict'))?.includes('CS 1101'), 'Overlapping alternative is marked conflicting with the cart');
+  assert.equal(await clearRow.getAttribute('data-vutoolkit-conflict'), null, 'Non-conflicting alternative is not marked');
+  await schedule();
+  assert.equal(await choices.count(), 2, 'Conflict marking does not change schedule enumeration');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Add all sections to cart', exact: true }).click();
+  await page.getByText('Cart changes verified; enrollment unchanged.', { exact: true }).waitFor();
+
+  const scaleRows = Array.from({ length: 50 }, (_, i) => {
+    const hour = (i % 12) + 1;
+    const ampm = Math.floor(i / 12) % 2 === 0 ? 'a' : 'p';
+    const endHour = (hour % 12) + 1;
+    return row(String(100 + i), String(i).padStart(2, '0'), 'MWF', `${hour}:00${ampm} - ${endHour}:00${ampm}`, 'add');
+  }).join('');
+  html = fixture(baseCart, table('CS 9001', scaleRows));
+  await visit();
+  await page.waitForSelector('[id="classNumber_149"]', { timeout: 3000 });
+
+  const brokenRow =(id, section, days, time) => `<tr class="classRow"><td id="classNumber_${id}" class="classSection">${section}</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">${days}</td><td class="classMeetingTimes">${time}</td><td class="classBuilding">Engineering 101</td><td class="classInstructor">Staff</td><td class="classAvailability">Open</td><td class="classActions"><div class="classActionButtons"><a title="Remove Class From Cart" href="#" onclick="return false">remove</a></div></td></tr>`;
   html = fixture(table('CS 1101', brokenRow('20', '01', 'MWF', '8:00a - 9:00a') + row('21', '02', 'TR', '9:00a - 10:00a')));
   await visit(); await schedule();
   assert.equal(await choices.count(), 2, 'Two single-section schedules, one per cart section');
@@ -92,7 +115,7 @@ try {
   await page.getByRole('link', { name: 'RMP lookup', exact: true }).waitFor();
   assert.equal(professorRequests, failAtProfessorRequest, 'Exactly the failing professor lookup request was attempted');
 
-  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback; enrollment untouched (isolated fixture).');
+  console.log('PASS production extension: alternatives, break filtering, persisted preferences, course exclusion, stale-term rejection, bulk add/remove, background-kernel RMP ratings, unpolluted professor metadata, cart-only selection, cart-retry-timeout error path, professor-lookup failure fallback, cart conflict highlighting; enrollment untouched (isolated fixture).');
   await page.close();
 
   const web = await browser.newPage(); web.on('pageerror', (e) => failures.push(e.message));
