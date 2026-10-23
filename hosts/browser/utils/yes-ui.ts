@@ -1,6 +1,7 @@
 import { parseSectionResults } from "../../../src/yes/more-parser";
 import { cartDifference, sectionsConflict, solveSchedules, type Meeting, type ScheduleSection } from "../../../src/yes/scheduler";
 export interface SchedulerPreferences { excludedCourses: string[]; excludedSectionIds: string[]; blockedTimes: Meeting[]; hidePreferenceConflicts: boolean; keepExcluded: boolean }
+export interface ProfessorMapping { id: string; name: string; rating: number; count: number; difficulty: number; wouldTakeAgainPercent: number; url: string }
 const defaults: SchedulerPreferences = { excludedCourses: [], excludedSectionIds: [], blockedTimes: [], hidePreferenceConflicts: false, keepExcluded: true };
 const cartRoot = () => document.querySelector<HTMLElement>("#studentCart_content, #studentCart, #cartDiv");
 const sectionsAt = (root: Element) => {
@@ -22,7 +23,7 @@ export async function clickCartAction(id: string, action: "add" | "remove", root
   for (let i = 0; i < 30; i++) { await delay(200); const ids = cartRoot() ? sectionsAt(cartRoot()!).map((s) => s.id) : []; if (action === "add" ? ids.includes(id) : !ids.includes(id)) return; }
   throw new Error(`Could not verify the cart ${action} for section ${id}; refresh YES before continuing.`);
 }
-export function mountYesScheduler({ loadPreferences, savePreferences, professorSearch }: { loadPreferences: () => Promise<Partial<SchedulerPreferences>>; savePreferences: (p: SchedulerPreferences) => Promise<void>; professorSearch?: (name: string) => Promise<any> }) {
+export function mountYesScheduler({ loadPreferences, savePreferences, professorSearch, loadProfessorMappings, saveProfessorMapping }: { loadPreferences: () => Promise<Partial<SchedulerPreferences>>; savePreferences: (p: SchedulerPreferences) => Promise<void>; professorSearch?: (name: string) => Promise<any>; loadProfessorMappings?: () => Promise<Record<string, ProfessorMapping>>; saveProfessorMapping?: (name: string, mapping: ProfessorMapping) => Promise<void> }) {
   if (document.querySelector("#vutoolkit-scheduler")) return;
   const host = element("div"); host.id = "vutoolkit-scheduler"; document.body.prepend(host);
   const shadow = host.attachShadow({ mode: "open" }); const style = element("style");
@@ -31,6 +32,9 @@ export function mountYesScheduler({ loadPreferences, savePreferences, professorS
   bar.append(element("strong", "vutoolkit"), button("Make schedule", () => makeSchedule()), button("Preferences", () => preferencesDialog()), status); shadow.append(bar);
   let prefs = { ...defaults }; let currentDialog: HTMLElement | null = null;
   const preferencesReady = loadPreferences().then((p) => { prefs = { ...defaults, ...p } }).catch(() => { status.textContent = "Preferences could not be loaded." });
+  let professorMappings: Record<string, ProfessorMapping> = {};
+  let professorMappingsLoaded = false;
+  const professorMappingsReady = (loadProfessorMappings?.() ?? Promise.resolve({})).then((m) => { professorMappings = m }).catch(() => { status.textContent = "Professor mappings could not be loaded." }).finally(() => { professorMappingsLoaded = true });
   const close = () => { currentDialog?.remove(); currentDialog = null };
   const dialog = (title: string) => { close(); const overlay = element("div"), box = element("section"); overlay.className = "overlay"; box.className = "dialog"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", title); box.setAttribute("aria-modal", "true"); box.append(element("h2", title), button("Close", close)); overlay.append(box); shadow.append(overlay); currentDialog = overlay; box.tabIndex = -1; box.focus(); return box };
   shadow.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Escape") close() });
@@ -101,10 +105,35 @@ export function mountYesScheduler({ loadPreferences, savePreferences, professorS
         }
       }
     });
+    const renderProfessorRating = (cell: HTMLElement, match: ProfessorMapping) => {
+      const a = element("a", match.count > 0 ? ` RMP ${match.rating.toFixed(1)} (${match.count})` : " RMP: not rated");
+      a.className = "vutoolkit-professor-rating"; a.href = match.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.style.color = match.rating >= 3.5 ? "#15803d" : match.rating < 2.5 ? "#b42318" : "#a16207";
+      a.title = `${match.name} · difficulty ${match.difficulty} · ${match.wouldTakeAgainPercent}% would take again`;
+      cell.append(a); cell.dataset.vutoolkitRating = "done";
+    };
     if (professorSearch) document.querySelectorAll<HTMLElement>(".classInstructor").forEach((cell) => {
       if (cell.dataset.vutoolkitRating) return; const name = cell.textContent?.trim(); if (!name || /TBA|staff/i.test(name)) return; cell.dataset.vutoolkitRating = "pending";
-      let promise = scannedProfessors.get(name); if (!promise) { promise = professorSearch(name); scannedProfessors.set(name, promise) }
-      promise.then((result) => { const matches = result.professors ?? []; const exact = matches.filter((p: any) => p.exactNameMatch); const match = exact.length === 1 ? exact[0] : null; const a = element("a", match ? match.count > 0 ? ` RMP ${match.rating.toFixed(1)} (${match.count})` : " RMP: not rated" : ` RMP: ${matches.length ? "choose match" : "no match"}`); a.className = "vutoolkit-professor-rating"; a.href = match?.url ?? `https://www.ratemyprofessors.com/search/professors/4002?q=${encodeURIComponent(name)}`; a.target = "_blank"; a.rel = "noopener noreferrer"; a.style.color = match ? match.rating >= 3.5 ? "#15803d" : match.rating < 2.5 ? "#b42318" : "#a16207" : "#475569"; a.title = match ? `${match.name} · difficulty ${match.difficulty} · ${match.wouldTakeAgainPercent}% would take again` : "Ratings are student-contributed; verify the professor's identity."; cell.append(a); cell.dataset.vutoolkitRating = "done" }).catch(() => { cell.dataset.vutoolkitRating = "unavailable"; const link = element("a", " RMP lookup"); link.className = "vutoolkit-professor-rating"; link.href = `https://www.ratemyprofessors.com/search/professors/4002?q=${encodeURIComponent(name)}`; link.target = "_blank"; link.rel = "noopener noreferrer"; link.title = "Automatic ratings unavailable: connect the extension to your local vutoolkit kernel."; cell.append(link) });
+      const resolveProfessor = () => {
+        const mapped = professorMappings[name]; if (mapped) { renderProfessorRating(cell, mapped); return }
+        let promise = scannedProfessors.get(name); if (!promise) { promise = professorSearch(name); scannedProfessors.set(name, promise) }
+        promise.then((result) => {
+          const matches = result.professors ?? []; const exact = matches.filter((p: any) => p.exactNameMatch); const match = exact.length === 1 ? exact[0] : null;
+          if (match) { renderProfessorRating(cell, match); return }
+          if (!matches.length) { const a = element("a", " RMP: no match"); a.className = "vutoolkit-professor-rating"; a.href = `https://www.ratemyprofessors.com/search/professors/4002?q=${encodeURIComponent(name)}`; a.target = "_blank"; a.rel = "noopener noreferrer"; a.style.color = "#475569"; a.title = "Ratings are student-contributed; verify the professor's identity."; cell.append(a); cell.dataset.vutoolkitRating = "done"; return }
+          const select = element("select"); select.className = "vutoolkit-professor-rating";
+          const placeholder = element("option", "Choose the correct professor"); placeholder.value = ""; placeholder.disabled = true; placeholder.selected = true; select.append(placeholder);
+          matches.slice(0, 10).forEach((candidate: any, index: number) => { const option = element("option", `${candidate.name} (${candidate.count > 0 ? `${candidate.rating.toFixed(1)}, ${candidate.count} ratings` : "not yet rated"})`); option.value = String(index); select.append(option) });
+          const none = element("option", "Find on RMP (no match)"); none.value = "none"; select.append(none);
+          select.addEventListener("change", () => {
+            if (select.value === "none") { window.open(`https://www.ratemyprofessors.com/search/professors/4002?q=${encodeURIComponent(name)}`, "_blank", "noopener"); select.value = ""; return }
+            const candidate = matches[Number(select.value)]; if (!candidate) return;
+            void saveProfessorMapping?.(name, candidate); professorMappings[name] = candidate; select.remove(); renderProfessorRating(cell, candidate);
+          });
+          cell.dataset.vutoolkitRating = "done"; cell.append(select);
+        }).catch(() => { cell.dataset.vutoolkitRating = "unavailable"; const link = element("a", " RMP lookup"); link.className = "vutoolkit-professor-rating"; link.href = `https://www.ratemyprofessors.com/search/professors/4002?q=${encodeURIComponent(name)}`; link.target = "_blank"; link.rel = "noopener noreferrer"; link.title = "Automatic ratings unavailable: connect the extension to your local vutoolkit kernel."; cell.append(link) });
+      };
+      if (professorMappingsLoaded) resolveProfessor(); else professorMappingsReady.then(resolveProfessor);
     });
   }
   let queued = false; const observer = new MutationObserver(() => { if (!queued) { queued = true; setTimeout(() => { queued = false; scan() }, 200) } }); observer.observe(document.body, { childList: true, subtree: true }); scan();
