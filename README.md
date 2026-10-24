@@ -62,6 +62,10 @@ Configure non-secret identity with `setup.identity` or vault entries `VANDERBILT
 
 Browser selection: an explicit `VUTOOLKIT_CDP_URL` takes precedence, then `VUTOOLKIT_BROWSER_PROFILE`, then the host's compatible configured default. An incompatible implicit default may fall back to OpenClaw's managed profile. Explicit remote/custom endpoints never start an unrelated browser. Passkey enrollment requires full Chromium CDP/WebAuthn support, not merely a browser UI or extension relay.
 
+OpenClaw 2026.10.7 dismisses modal WebAuthn requests in headless profiles attached to its page-automation layer. This also cancels virtual-authenticator assertions before OneVU can validate them. `BROWSER_WEBAUTHN_BLOCKED` identifies that known injected guard; it is not evidence of a revoked passkey and must not trigger credential recovery. Keep toolkit authentication in a dedicated managed CDP profile (for example `openclaw browser create-profile --name vutoolkit-auth`), used through the toolkit's raw CDP driver rather than OpenClaw page automation, or use a supported headed browser. Do not attach the headless authentication profile to general browser snapshots or page automation, which installs the guard. No browser policy is disabled or bypassed by the toolkit.
+
+Set `VUTOOLKIT_BROWSER_PROFILE=vutoolkit-auth` in the toolkit host's environment. If also pinning `VUTOOLKIT_CDP_URL`, use that profile's actual endpoint: an explicitly paired profile may be restarted only when its configured endpoint matches exactly. A mismatch fails closed. A CDP URL without a paired profile remains attach-only. Neither session metadata's cached `healthy` flag nor `setup.status` proves live authentication; verify with `sessions.refresh` and a read-only service request.
+
 Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and `VUTOOLKIT_CDP_URL` through their own secret manager. Existing healthy sessions are reused.
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
