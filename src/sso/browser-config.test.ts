@@ -51,6 +51,17 @@ describe("browser selection and recovery", () => {
     await ensureBrowser(selected, { start, reachable: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true) });
     expect(start).toHaveBeenCalledExactlyOnceWith("work");
   });
+  it("recovers only an explicitly paired profile's matching endpoint", async () => {
+    const status = vi.fn(() => managed("auth", 18801));
+    const browser = await resolveBrowser({ VUTOOLKIT_CDP_URL: "http://127.0.0.1:18801/", VUTOOLKIT_BROWSER_PROFILE: "auth" }, { status });
+    const start = vi.fn();
+    await ensureBrowser(browser, { start, reachable: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true) });
+    expect(status).toHaveBeenCalledExactlyOnceWith("auth");
+    expect(start).toHaveBeenCalledExactlyOnceWith("auth");
+  });
+  it("refuses mismatched endpoint/profile configuration without switching browsers", async () => {
+    await expect(resolveBrowser({ VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800", VUTOOLKIT_BROWSER_PROFILE: "auth" }, { status: () => managed("auth", 18801) })).rejects.toMatchObject({ code: "BROWSER_UNAVAILABLE", retryable: false });
+  });
   it("respects explicit named profile", async () => {
     const status = vi.fn(() => managed("school", 19990));
     expect(await resolveBrowser({ VUTOOLKIT_BROWSER_PROFILE: "school" }, { status })).toMatchObject({ cdpUrl: "http://127.0.0.1:19990", source: "profile" });
