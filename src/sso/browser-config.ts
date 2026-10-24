@@ -61,7 +61,16 @@ function selection(info: Record<string, unknown>, source: BrowserSelection["sour
 /** Native status resolves configured defaults and nonstandard ports without reading host secrets. */
 export async function resolveBrowser(env: NodeJS.ProcessEnv = process.env, deps: BrowserConfigDeps = {}): Promise<BrowserSelection> {
   if (env.VUTOOLKIT_CDP_URL?.trim()) {
-    return { cdpUrl: endpoint(env.VUTOOLKIT_CDP_URL.trim()), canStart: false, source: "endpoint" };
+    const cdpUrl = endpoint(env.VUTOOLKIT_CDP_URL.trim());
+    const profile = env.VUTOOLKIT_BROWSER_PROFILE?.trim();
+    // An explicitly paired managed profile may recover its own endpoint, never another one.
+    if (profile) {
+      const selected = selection(await (deps.status ?? status)(profile), "endpoint", profile);
+      if (!selected || new URL(selected.cdpUrl).href !== new URL(cdpUrl).href)
+        throw unavailable("VUTOOLKIT_CDP_URL does not match VUTOOLKIT_BROWSER_PROFILE. Configure the same managed authentication browser in both; no alternate browser was launched.");
+      return selected;
+    }
+    return { cdpUrl, canStart: false, source: "endpoint" };
   }
   const profile = env.VUTOOLKIT_BROWSER_PROFILE?.trim() || undefined;
   const read = deps.status ?? status;

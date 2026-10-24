@@ -6,6 +6,8 @@
 export type AuthErrorCode =
   /** The managed browser's CDP endpoint could not be reached or started. */
   | "BROWSER_UNAVAILABLE"
+  /** Host-injected browser policy is cancelling WebAuthn before an assertion. */
+  | "BROWSER_WEBAUTHN_BLOCKED"
   /** A vault secret (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) could not be read. */
   | "VAULT_SECRET_UNAVAILABLE"
   /** OneVU (Okta) rejected the sign-in or showed an error message. */

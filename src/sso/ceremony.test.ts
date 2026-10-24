@@ -45,7 +45,7 @@ describe("new-passkey proof", () => {
 
 // Exact Oct 11 observed DOM: automatic verification, only recovery links, no Verify button.
 // Execute the production probe against it, rather than mocking the classifier's output.
-function pendingVerification(options: { recover?: boolean; heading?: string; origin?: string } = {}) {
+function pendingVerification(options: { recover?: boolean; heading?: string; origin?: string; guarded?: boolean } = {}) {
   vi.useFakeTimers();
   const location = new URL(options.origin ?? "https://onevu.vanderbilt.edu/oauth2/v1/authorize");
   const link = { getClientRects: () => [{}], offsetParent: {}, textContent: "Verify with something else" };
@@ -58,11 +58,19 @@ function pendingVerification(options: { recover?: boolean; heading?: string; ori
     if (method === "Storage.getCookies") return { cookies: [{ name: "idx", value: "synthetic", domain: "onevu.vanderbilt.edu" }] };
     return {};
   });
-  vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async (expr) => runInNewContext(expr, { location, document }) }));
+  const CredentialsContainer = options.guarded ? { prototype: { get(options: unknown) { const opensDialog = Boolean(options); const dismissed = () => null; return opensDialog ? dismissed() : null; } } } : undefined;
+  vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async (expr) => runInNewContext(expr, { location, document, CredentialsContainer }) }));
   return send;
 }
 describe("automatic verification without a Verify control", () => {
   const options = { cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, requireAssertion: true, stepMs: 1000, timeoutMs: 40_000 };
+  it("identifies the observed host WebAuthn guard without retrying or blaming the passkey", async () => {
+    const send = pendingVerification({ guarded: true });
+    const pending = expect(runSsoCeremony(options)).rejects.toMatchObject({ code: "BROWSER_WEBAUTHN_BLOCKED", retryable: false });
+    await vi.runAllTimersAsync(); await pending;
+    expect(send.mock.calls.some(([method]) => method === "Storage.getCookies" || method === "WebAuthn.disable")).toBe(false);
+    expect(send.mock.calls.filter(([method]) => method === "Page.navigate")).toHaveLength(1);
+  });
   it("restarts a pending document, then proves the real assertion before harvest", async () => {
     const send = pendingVerification();
     const pending = expect(runSsoCeremony(options)).resolves.toMatchObject({ passkeyVerified: true });
