@@ -163,3 +163,9 @@ The generated commands below describe the selected distribution surfaces, not pr
 - **npm package** — `npm install vutoolkit`
 
 <!-- /tf:install -->
+
+### Commodore Access read-only inspection (Linux)
+
+From this checkout, run `node --import tsx scripts/commodore-access.mjs --out /absolute/private/evidence-directory --repeat 2 --inspect-modify`. This uses the existing OneVU ceremony against the portal SP login, a fresh dedicated headless Chrome profile per run, and native-vault credentials. It reads Upcoming Exams and each offered Modify page; it never submits portal forms or accepts agreements. Chrome uses its ordinary compatibility UA because Cirrus rejects HeadlessChrome, and provider proxy variables are filtered just as for stock OpenClaw browser launches.
+
+It requires at least 3 GiB available RAM before each launch and closes its browser below 2 GiB. Receipts record actual assertion counters and browser closure, never credentials or cookies. Only the observed signature counter is saved back to the existing key, with compare/readback; no enrollment/recovery occurs. Run it serially. `--out` must be private and fresh; read the receipt before retrying a failed run. No gateway/plugin reload or build is required for this source-based command. The School Coordinator owns all booking changes.

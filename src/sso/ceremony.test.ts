@@ -95,3 +95,28 @@ describe("automatic verification without a Verify control", () => {
     expect(send.mock.calls.some(([m]) => m === "WebAuthn.disable")).toBe(false);
   });
 });
+
+describe("SP assertion metadata", () => {
+  it.each([5, 6])("reports only an observed increment (%s), without isolated proof", async (count) => {
+    setup("https://portal.example/dashboard/Default.aspx", count);
+    const pending = runSsoCeremony({ cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, loginUrl: "https://portal.example/" });
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.passkeyVerified).toBeUndefined();
+    expect(result.assertedSignCount).toBe(count > 5 ? count : undefined);
+  });
+});
+
+describe("SP redirect completion", () => {
+  it("waits through a federation bridge instead of returning it as authenticated SP", async () => {
+    setup("https://bridge.example/saml", 6);
+    vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => {
+      let probes = 0;
+      const send = vi.fn(async (method: string) => method === "WebAuthn.addVirtualAuthenticator" ? { authenticatorId: "test" } : method === "WebAuthn.getCredentials" ? { credentials: [{ credentialId: passkey.credentialId, signCount: 6 }] } : method === "Storage.getCookies" ? { cookies: [] } : {});
+      return fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async () => ({ url: ++probes === 1 ? "https://bridge.example/saml" : "https://portal.example/dashboard/Default.aspx", identifier: false, webauthn: false, error: "" }) });
+    });
+    const pending = runSsoCeremony({ cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, loginUrl: "https://portal.example/", successOrigin: "https://portal.example" });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ finalUrl: "https://portal.example/dashboard/Default.aspx", assertedSignCount: 6 });
+  });
+});

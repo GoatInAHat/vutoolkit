@@ -35,6 +35,8 @@ export interface CeremonyOptions {
   email: string;
   passkey: VaultPasskey;
   loginUrl?: string;
+  /** SP login: wait through federation intermediaries for this exact final origin. */
+  successOrigin?: string;
   stepMs?: number;
   /** Whole-ceremony deadline; defaults to 120 seconds. */
   timeoutMs?: number;
@@ -183,6 +185,7 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
         const state = classifyOktaFlow(probe);
         if (state.kind !== "verifying") verificationStarted = undefined;
         if (state.kind === "success") {
+          if (opts.successOrigin && new URL(finalUrl).origin !== new URL(opts.successOrigin).origin) continue;
           let assertedSignCount: number | undefined;
           if (opts.requireAssertion) {
             let exactHome = false;
@@ -197,6 +200,10 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
             if (!key || !Number.isFinite(key.signCount) || observedSignCount <= signCountUsed)
               throw new AuthError("OKTA_REJECTED", "OneVU reached a signed-in page without a verified assertion from the newly enrolled toolkit passkey; no verified session was returned.", { retryable: false });
             assertedSignCount = observedSignCount;
+          } else {
+            // SP redirects also use the authenticator counter; report it without claiming
+            // the isolated OneVU-home proof promised by requireAssertion.
+            assertedSignCount = await assertedCounter();
           }
           const cookies = await harvestCookies(send);
           const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
@@ -206,7 +213,8 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
             expiresAt: expiries.length ? new Date(Math.max(...expiries) * 1000).toISOString() : undefined,
             finalUrl,
             signCountUsed,
-            ...(opts.requireAssertion ? { passkeyVerified: true, assertedSignCount } : {}),
+            ...(opts.requireAssertion ? { passkeyVerified: true } : {}),
+            ...(assertedSignCount !== undefined ? { assertedSignCount } : {}),
           };
         }
         if (state.kind === "error") {
