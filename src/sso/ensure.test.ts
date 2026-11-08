@@ -360,3 +360,100 @@ describe("ceremony pure helpers", () => {
     await expect(withDeadline(new Promise(() => {}), 10, "slow step")).rejects.toThrow("[TIMEOUT] slow step");
   });
 });
+
+describe("ceremony ownership regressions", () => {
+  it("refresh does not mistake a concurrent healthy cache result for a mint", async () => {
+    const store = freshStore();
+    await store.put({ idp: "vanderbilt", acquiredAt: NOW.toISOString(), expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "idx=v" });
+    const ceremony = vi.fn(async () => minted());
+    const a = ensureSession("vanderbilt", store, { ...DEPS, ceremony });
+    const b = ensureSession("vanderbilt", store, { ...DEPS, ceremony, forceRefresh: true });
+    expect((await a).source).toBe("cache");
+    expect((await b).source).toBe("minted");
+    expect(ceremony).toHaveBeenCalledTimes(1);
+  });
+  it("aborting browser preparation never starts an assertion or retry", async () => {
+    const controller = new AbortController(); const ceremony = vi.fn(async () => minted());
+    await expect(ensureSession("vanderbilt", freshStore(), { ...DEPS, signal: controller.signal,
+      ensureBrowser: async () => { controller.abort(); }, ceremony })).rejects.toThrow();
+    expect(ceremony).not.toHaveBeenCalled();
+  });
+  it("one caller abort does not cancel a surviving shared waiter", async () => {
+    const store = freshStore(); const controller = new AbortController(); let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const ceremony = vi.fn(async () => { await gate; return minted(); });
+    const a = ensureSession("vanderbilt", store, { ...DEPS, signal: controller.signal, ceremony });
+    const b = ensureSession("vanderbilt", store, { ...DEPS, ceremony });
+    const failed = expect(a).rejects.toThrow();
+    controller.abort(); release(); await failed;
+    await expect(b).resolves.toMatchObject({ source: "minted" });
+    expect(ceremony).toHaveBeenCalledTimes(1);
+  });
+  it("retains the slot after caller timeout until persistence settles", async () => {
+    const store = freshStore(); let release!: () => void; let entered!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const started = new Promise<void>(r => { entered = r; });
+    let raw = JSON.stringify(PASSKEY); const ceremony = vi.fn(async () => ({ ...minted(), passkeyVerified: true, assertedSignCount: 668 }));
+    const deps = { ...DEPS, forceRefresh: true, ceremony,
+      secretsRead: (name: string) => name === "VANDERBILT_EMAIL" ? "synthetic@vanderbilt.edu" : raw,
+      secretsWrite: async (_: string, value: string) => { entered(); await gate; raw = value; } };
+    const a = ensureSession("vanderbilt", store, { ...deps, deadlineMs: 10 });
+    const failed = expect(a).rejects.toMatchObject({ code: "TIMEOUT" });
+    await started; await failed;
+    const b = ensureSession("vanderbilt", store, deps);
+    const settled = b.catch(() => undefined);
+    release(); await settled;
+    expect(ceremony).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(raw).signCount).toBe(668);
+  });
+  it("different IdPs can mint independently", async () => {
+    const store = freshStore(); let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const a = ensureSession("vanderbilt", store, { ...DEPS, ceremony: async () => { await gate; return minted(); } });
+    try {
+      await expect(ensureSession("microsoft", store, { ...DEPS, microsoftCeremony: async () => mintedMicrosoft(), deadlineMs: 50 })).resolves.toMatchObject({ idp: "microsoft" });
+    } finally { release(); await a; }
+  });
+  it("failure releases ownership for a later retry", async () => {
+    const store = freshStore();
+    await expect(ensureSession("vanderbilt", store, { ...DEPS, ceremony: async () => { throw new VaultNotWiredError("fake"); } })).rejects.toThrow();
+    await expect(ensureSession("vanderbilt", store, DEPS)).resolves.toMatchObject({ source: "minted" });
+  });
+  it("shares refresh and ensure across store handles until counter persistence completes", async () => {
+    const store = freshStore();
+    let raw = JSON.stringify(PASSKEY);
+    let assertions = 0;
+    let release!: () => void;
+    const writing = new Promise<void>(r => { release = r; });
+    let entered!: () => void;
+    const started = new Promise<void>(r => { entered = r; });
+    const deps: EnsureDeps = { ...DEPS,
+      secretsRead: name => name === "VANDERBILT_EMAIL" ? "synthetic@vanderbilt.edu" : raw,
+      secretsWrite: async (_name, value) => { entered(); await writing; raw = value; },
+      ceremony: async () => { assertions++; return { ...minted(), passkeyVerified: true, assertedSignCount: 668 }; },
+    };
+    const a = ensureSession("vanderbilt", store, { ...deps, forceRefresh: true });
+    await started;
+    const b = ensureSession("vanderbilt", new FileSessionStore(store.location), deps);
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(assertions).toBe(1);
+    expect(rb).toEqual(ra);
+    expect(JSON.parse(raw).signCount).toBe(668);
+  });
+  it("does not assert when already aborted", async () => {
+    const controller = new AbortController(); controller.abort();
+    const ceremony = vi.fn(async () => minted());
+    await expect(ensureSession("vanderbilt", freshStore(), { ...DEPS, signal: controller.signal, ceremony } as EnsureDeps)).rejects.toThrow();
+    expect(ceremony).not.toHaveBeenCalled();
+  });
+  it("persists and reads back an asserted counter before honouring abort", async () => {
+    const controller = new AbortController(); let raw = JSON.stringify(PASSKEY); let reads = 0;
+    await expect(ensureSession("vanderbilt", freshStore(), { ...DEPS, signal: controller.signal,
+      secretsRead: name => { reads++; return name === "VANDERBILT_EMAIL" ? "synthetic@vanderbilt.edu" : raw; },
+      secretsWrite: async (_name, value) => { raw = value; },
+      ceremony: async () => { controller.abort(); return { ...minted(), passkeyVerified: true, assertedSignCount: 668 }; },
+    } as EnsureDeps)).rejects.toThrow();
+    expect(JSON.parse(raw).signCount).toBe(668); expect(reads).toBeGreaterThanOrEqual(5);
+  });
+});

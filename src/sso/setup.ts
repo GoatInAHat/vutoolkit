@@ -1,3 +1,4 @@
+import { checkAuthAbort } from "./budget.js";
 /** OneVU's real self-service enrollment, with credential material confined to CDP and the vault. */
 import { execFileSync } from "node:child_process";
 import { createPrivateKey } from "node:crypto";
@@ -189,10 +190,12 @@ const PAGE_PROBE = (email: string, verifyIdentity = true) => `(async () => {
 })()`;
 
 async function authenticator(tab: CdpTab, passkey?: VaultPasskey): Promise<string> {
+  checkAuthAbort();
   await tab.send("WebAuthn.enable");
   const created = await tab.send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
     options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
   });
+  checkAuthAbort();
   if (passkey) await tab.send("WebAuthn.addCredential", {
     authenticatorId: created.authenticatorId,
     credential: { ...passkey, credentialId: toCdpB64(passkey.credentialId), privateKey: toCdpB64(passkey.privateKey), userHandle: toCdpB64(passkey.userHandle), isResidentCredential: passkey.isResidentCredential ?? false },
