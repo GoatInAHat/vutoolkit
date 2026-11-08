@@ -48,7 +48,7 @@ export interface EnsureDeps {
   ensureBrowser?: (cdpUrl: string) => Promise<void>;
   /** Override for tests; defaults to the OpenClaw vault CLI. Never logs or echoes values. */
   secretsRead?: (name: string) => string;
-  secretsWrite?: (name: string, value: string) => void;
+  secretsWrite?: (name: string, value: string) => void | Promise<void>;
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
   /** Override for tests; delay before the single retry of a transient failure. */
@@ -174,7 +174,7 @@ async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promis
       const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: minted.assertedSignCount });
       if (read("VANDERBILT_PASSKEY") !== currentRaw)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey changed before its counter update; no credential was overwritten.", { retryable: false });
-      (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
+      await (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
       if (read("VANDERBILT_PASSKEY") !== updated)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey counter write could not be verified; no session replacement was published.", { retryable: false });
       passkey.signCount = minted.assertedSignCount;

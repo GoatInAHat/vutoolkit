@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -7,12 +7,52 @@ import { VaultNotWiredError } from "./index.js";
 export interface CredentialStorage {
   readonly location: string;
   read(): string | null;
-  write(value: string): void;
+  write(value: string): Promise<void>;
 }
 
 export interface NativeSecrets {
   read(name: string): string | null;
-  write(name: string, value: string): void;
+  write(name: string, value: string): Promise<void>;
+}
+
+/**
+ * The CLI's online store write routes back through this Gateway over the local socket
+ * (runWithLocalStateOwner -> secrets.store.set). A synchronous child would block the same
+ * event loop that must answer it, so the write is a non-blocking child and the caller awaits.
+ */
+function runNativeWrite(args: string[], input: string, timeoutMs = 60_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const child = spawn("openclaw", args, { stdio: ["pipe", "pipe", "ignore"] });
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 2_000).unref();
+      finish(() => reject(new Error("native credential vault write timed out")));
+    }, timeoutMs);
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+      if (Buffer.byteLength(stdout, "utf8") > 131_072) {
+        child.kill("SIGKILL");
+        finish(() => reject(new Error("native credential vault response exceeded the bound")));
+      }
+    });
+    child.stdin?.on("error", () => { /* close/exit decides the outcome */ });
+    child.on("error", (error) => finish(() => reject(error)));
+    child.on("close", (code) => {
+      if (code === 0) finish(() => resolve(stdout.trim()));
+      else finish(() => reject(new Error("native credential vault write exited " + String(code))));
+    });
+    child.stdin?.end(input, "utf8");
+  });
 }
 
 export const nativeSecrets: NativeSecrets = {
@@ -26,11 +66,9 @@ export const nativeSecrets: NativeSecrets = {
       throw new VaultNotWiredError("Native credential vault read failed; no filesystem fallback was used.");
     }
   },
-  write(name, value) {
+  async write(name, value) {
     try {
-      execFileSync("openclaw", ["secrets", "store", "set", name, "--kind", "env", "--value-file", "-"], {
-        input: value, timeout: 20_000, stdio: ["pipe", "ignore", "ignore"],
-      });
+      await runNativeWrite(["secrets", "store", "set", name, "--kind", "env", "--value-file", "-"], value);
     } catch {
       throw new VaultNotWiredError("Native credential vault write failed; no credential was written to a cache file.");
     }
@@ -54,10 +92,10 @@ export class NativeCredentialStorage implements CredentialStorage {
     return this.secrets.read(this.name);
   }
 
-  write(value: string): void {
+  async write(value: string): Promise<void> {
     if (Buffer.byteLength(value, "utf8") > 65_536)
       throw new VaultNotWiredError("Credential envelope exceeds the native vault's 64 KiB limit.");
-    this.secrets.write(this.name, value);
+    await this.secrets.write(this.name, value);
     if (this.secrets.read(this.name) !== value)
       throw new VaultNotWiredError("Native credential vault readback did not match; preserve the original cache.");
   }
@@ -82,16 +120,16 @@ export function credentialStorage(
         throw new VaultNotWiredError("Legacy credential cache needs verified migration to the native vault before use.");
       return value;
     },
-    write(value) {
+    async write(value) {
       if (storage.read() === null && existsSync(legacy))
         throw new VaultNotWiredError("Legacy credential cache needs verified migration before a new value can be stored.");
-      storage.write(value);
+      await storage.write(value);
     },
   };
 }
 
 /** Call with credential writers quiesced. Originals remain until the integrator verifies cutover. */
-export function migrateCredentialCaches(dataDir: string, secrets: NativeSecrets = nativeSecrets) {
+export async function migrateCredentialCaches(dataDir: string, secrets: NativeSecrets = nativeSecrets): Promise<{ migrated: Array<{ kind: CredentialKind; secretName: string; verified: true }>; originalsPreserved: true }> {
   const migrated: Array<{ kind: CredentialKind; secretName: string; verified: true }> = [];
   for (const sourceKind of ["sessions", "graph"] as const) {
     const path = join(dataDir, sourceKind === "sessions" ? "sessions.vault.json" : "graph-token.json");
@@ -117,7 +155,7 @@ export function migrateCredentialCaches(dataDir: string, secrets: NativeSecrets 
       const existing = storage.read();
       if (existing !== null && existing !== value)
         throw new VaultNotWiredError("Native vault entry differs from the legacy cache; reconcile without overwriting either.");
-      storage.write(value);
+      await storage.write(value);
       migrated.push({ kind, secretName: storage.name, verified: true });
     }
     if (readFileSync(path, "utf8").trim() !== raw)

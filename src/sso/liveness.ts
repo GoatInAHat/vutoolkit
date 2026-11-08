@@ -30,7 +30,7 @@ class MicrosoftProbeTokenCache extends GraphTokenCache {
     return null;
   }
 
-  override put(): void {
+  override async put(): Promise<void> {
     // Liveness only needs the token for this one proof request.
   }
 }
