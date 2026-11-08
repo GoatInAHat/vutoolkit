@@ -419,7 +419,7 @@ describe("ceremony ownership regressions", () => {
     await expect(ensureSession("vanderbilt", store, { ...DEPS, ceremony: async () => { throw new VaultNotWiredError("fake"); } })).rejects.toThrow();
     await expect(ensureSession("vanderbilt", store, DEPS)).resolves.toMatchObject({ source: "minted" });
   });
-  it("shares refresh and ensure across store handles until counter persistence completes", async () => {
+  it.each([false, true])("shares refresh with concurrent ensure/refresh (force=%s) through counter persistence", async (forceRefresh) => {
     const store = freshStore();
     let raw = JSON.stringify(PASSKEY);
     let assertions = 0;
@@ -434,7 +434,7 @@ describe("ceremony ownership regressions", () => {
     };
     const a = ensureSession("vanderbilt", store, { ...deps, forceRefresh: true });
     await started;
-    const b = ensureSession("vanderbilt", new FileSessionStore(store.location), deps);
+    const b = ensureSession("vanderbilt", new FileSessionStore(store.location), { ...deps, forceRefresh });
     release();
     const [ra, rb] = await Promise.all([a, b]);
     expect(assertions).toBe(1);
