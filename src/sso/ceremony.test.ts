@@ -51,10 +51,12 @@ function pendingVerification(options: { recover?: boolean; heading?: string; ori
   const link = { getClientRects: () => [{}], offsetParent: {}, textContent: "Verify with something else" };
   const heading = { textContent: options.heading ?? "Verify with Security Key or Biometric Authenticator" };
   const document = { querySelector: (selector: string) => selector === "h2" ? heading : selector === "[data-se=switchAuthenticator]" ? link : null };
-  const send = vi.fn(async (method: string) => {
+  let injected = 5;
+  const send = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+    if (method === "WebAuthn.addCredential") injected = (params?.credential as {signCount:number}).signCount;
     if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "test" };
     if (method === "WebAuthn.disable" && options.recover !== false) location.href = "https://onevu.vanderbilt.edu/app/UserHome";
-    if (method === "WebAuthn.getCredentials") return { credentials: [{ credentialId: passkey.credentialId, signCount: location.pathname === "/app/UserHome" ? 7 : 5 }] };
+    if (method === "WebAuthn.getCredentials") return { credentials: [{ credentialId: passkey.credentialId, signCount: location.pathname === "/app/UserHome" ? injected + 1 : injected }] };
     if (method === "Storage.getCookies") return { cookies: [{ name: "idx", value: "synthetic", domain: "onevu.vanderbilt.edu" }] };
     return {};
   });
@@ -69,7 +71,7 @@ describe("automatic verification without a Verify control", () => {
     const pending = expect(runSsoCeremony(options)).rejects.toMatchObject({ code: "BROWSER_WEBAUTHN_BLOCKED", retryable: false });
     await vi.runAllTimersAsync(); await pending;
     expect(send.mock.calls.some(([method]) => method === "Storage.getCookies" || method === "WebAuthn.disable")).toBe(false);
-    expect(send.mock.calls.filter(([method]) => method === "Page.navigate")).toHaveLength(1);
+    expect(send.mock.calls.filter(([method, params]) => method === "Page.navigate" && params?.url !== "about:blank")).toHaveLength(1);
   });
   it("restarts a pending document, then proves the real assertion before harvest", async () => {
     const send = pendingVerification();
@@ -78,7 +80,7 @@ describe("automatic verification without a Verify control", () => {
     expect(send.mock.calls.filter(([method]) => method === "WebAuthn.disable")).toHaveLength(1);
     const calls = send.mock.calls.map(([method]) => method);
     const reset = calls.indexOf("WebAuthn.disable");
-    expect(calls.slice(reset - 3, reset + 5)).toEqual(["Page.navigate", "WebAuthn.getCredentials", "WebAuthn.removeVirtualAuthenticator", "WebAuthn.disable", "WebAuthn.enable", "WebAuthn.addVirtualAuthenticator", "WebAuthn.addCredential", "Page.navigate"]);
+    expect(calls.slice(reset - 4, reset + 6)).toEqual(["WebAuthn.setAutomaticPresenceSimulation", "Page.navigate", "WebAuthn.getCredentials", "WebAuthn.removeVirtualAuthenticator", "WebAuthn.disable", "WebAuthn.enable", "WebAuthn.addVirtualAuthenticator", "WebAuthn.addCredential", "WebAuthn.setAutomaticPresenceSimulation", "Page.navigate"]);
     expect(send.mock.calls.findIndex(([m]) => m === "WebAuthn.getCredentials")).toBeLessThan(send.mock.calls.findIndex(([m]) => m === "Storage.getCookies"));
   });
   it("bounds recovery and never harvests a stuck verification", async () => {
