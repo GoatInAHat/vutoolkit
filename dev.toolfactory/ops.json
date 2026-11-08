@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "brightspace.api",
-      "description": "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable.",
+      "description": "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -13,6 +13,11 @@
           "maxChars": {
             "description": "Response text bound (default 16000)",
             "type": "number"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -67,7 +72,7 @@
     },
     {
       "name": "brightspace.fetch",
-      "description": "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable.",
+      "description": "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -78,6 +83,11 @@
           "maxChars": {
             "description": "Text bound (default 8000)",
             "type": "number"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -132,7 +142,7 @@
     },
     {
       "name": "courses.detail",
-      "description": "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.",
+      "description": "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -145,6 +155,11 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -208,13 +223,18 @@
     },
     {
       "name": "courses.search",
-      "description": "Search the live YES catalog for course IDs, titles, schools and typical offerings. Vanderbilt's keyword search can return broad matches; select by returned course code.",
+      "description": "Search the live YES catalog for course IDs, titles, schools and typical offerings. Vanderbilt's keyword search can return broad matches; select by returned course code. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "keywords": {
             "type": "string",
             "minLength": 3
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -262,7 +282,7 @@
     },
     {
       "name": "courses.sections",
-      "description": "Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes.",
+      "description": "Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -273,6 +293,11 @@
           "termCode": {
             "type": "string",
             "pattern": "^\\d+$"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -402,10 +427,16 @@
     },
     {
       "name": "degree.audit",
-      "description": "Read Vanderbilt's official degree-audit requirement groups, status, counters and existing planner courses. No audit refresh, enrollment or planner mutation; report timestamps are preserved.",
+      "description": "Read Vanderbilt's official degree-audit requirement groups, status, counters and existing planner courses. No audit refresh, enrollment or planner mutation; report timestamps are preserved. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "outputSchema": {
@@ -463,10 +494,16 @@
     },
     {
       "name": "degree.graph",
-      "description": "Build a directed graph from the authenticated student's official YES audit, including all current requirement groups/lines, satisfying courses and optional planner courses. Official course alternatives load separately via degree.options; this does not invent degree rules.",
+      "description": "Build a directed graph from the authenticated student's official YES audit, including all current requirement groups/lines, satisfying courses and optional planner courses. Official course alternatives load separately via degree.options; this does not invent degree rules. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "outputSchema": {
@@ -520,7 +557,7 @@
     },
     {
       "name": "degree.options",
-      "description": "Read all official course satisfiers for one current degree-audit requirement line. Report and entry IDs come from degree.audit/degree.graph; the student identity is resolved internally from the authenticated audit.",
+      "description": "Read all official course satisfiers for one current degree-audit requirement line. Report and entry IDs come from degree.audit/degree.graph; the student identity is resolved internally from the authenticated audit. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -533,6 +570,11 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -892,7 +934,7 @@
     },
     {
       "name": "graph.call",
-      "description": "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
+      "description": "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -923,7 +965,12 @@
               ]
             }
           },
-          "body": {}
+          "body": {},
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
+          }
         },
         "required": [
           "path"
@@ -1272,13 +1319,18 @@
     },
     {
       "name": "record.fetch",
-      "description": "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
+      "description": "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "fixturePath": {
             "description": "Read the transcript from this JSON file instead of live YES (dev/test)",
             "type": "string"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -1857,7 +1909,7 @@
     },
     {
       "name": "sessions.ensure",
-      "description": "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed.",
+      "description": "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1867,6 +1919,11 @@
               "vanderbilt",
               "microsoft"
             ]
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -2082,7 +2139,7 @@
     },
     {
       "name": "sessions.open",
-      "description": "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
+      "description": "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2101,6 +2158,11 @@
               "cdp",
               "storage-state"
             ]
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -2130,7 +2192,7 @@
     },
     {
       "name": "sessions.refresh",
-      "description": "Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry.",
+      "description": "Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2141,6 +2203,11 @@
               "vanderbilt",
               "microsoft"
             ]
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -2198,7 +2265,7 @@
     },
     {
       "name": "setup.enroll",
-      "description": "Issue a toolkit passkey through OneVU's security-method enrollment. Requires authenticated managed-browser sign-in and explicit account-holder confirmation. For recovery only, replaceExisting=true stages and vault-verifies the newly issued credential, preserves the prior key in VANDERBILT_PASSKEY_PREVIOUS, then promotes the new key; use only after the account holder reports the current toolkit key was rejected and confirms the browser is signed into their own configured account. Never accepts secrets in arguments or revokes OneVU passkeys. Returns metadata only.",
+      "description": "Issue a toolkit passkey through OneVU's security-method enrollment. Requires authenticated managed-browser sign-in and explicit account-holder confirmation. For recovery only, replaceExisting=true stages and vault-verifies the newly issued credential, preserves the prior key in VANDERBILT_PASSKEY_PREVIOUS, then promotes the new key; use only after the account holder reports the current toolkit key was rejected and confirms the browser is signed into their own configured account. Never accepts secrets in arguments or revokes OneVU passkeys. Returns metadata only. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2214,8 +2281,8 @@
           "timeoutSeconds": {
             "default": 120,
             "type": "integer",
-            "minimum": 15,
-            "maximum": 300
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
@@ -2325,7 +2392,7 @@
     },
     {
       "name": "setup.prepare",
-      "description": "Prepare a dedicated OneVU tab for the account holder to sign in. Normal setup may load the configured toolkit passkey; recovery=true deliberately does not load or retry the rejected key and requires the holder to use their usual sign-in method. Does not issue or change credentials. The visible page must match the configured student's email before enrollment.",
+      "description": "Prepare a dedicated OneVU tab for the account holder to sign in. Normal setup may load the configured toolkit passkey; recovery=true deliberately does not load or retry the rejected key and requires the holder to use their usual sign-in method. Does not issue or change credentials. The visible page must match the configured student's email before enrollment. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2338,6 +2405,11 @@
             "default": false,
             "description": "Recovery only: do not load/use the rejected toolkit passkey; allow the account holder to sign in through OneVU's normal flow.",
             "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
@@ -2397,7 +2469,7 @@
     },
     {
       "name": "setup.run",
-      "description": "Deterministic one-call Vanderbilt setup or explicit passkey recovery. Uses this host's configured identity and optional vaulted VANDERBILT_PASSWORD, first reusing an authenticated browser session. On first-time setup it enrolls and vault-verifies a new OneVU passkey, then establishes Vanderbilt and Microsoft sessions. status=partial means Vanderbilt is ready but Microsoft is not; do not claim full setup. Existing valid keys are reused, never rotated. recovery=true skips a rejected key and preserves it as a vault backup. With allowInteractiveVerification=false, setup does not submit a password or click a verification factor; OneVU may still require step-up for enrollment. Returns no credentials. Typed errors tell the caller what prerequisite or one-time verification is missing.",
+      "description": "Deterministic one-call Vanderbilt setup or explicit passkey recovery. Uses this host's configured identity and optional vaulted VANDERBILT_PASSWORD, first reusing an authenticated browser session. On first-time setup it enrolls and vault-verifies a new OneVU passkey, then establishes Vanderbilt and Microsoft sessions. status=partial means Vanderbilt is ready but Microsoft is not; do not claim full setup. Existing valid keys are reused, never rotated. recovery=true skips a rejected key and preserves it as a vault backup. With allowInteractiveVerification=false, setup does not submit a password or click a verification factor; OneVU may still require step-up for enrollment. Returns no credentials. Typed errors tell the caller what prerequisite or one-time verification is missing. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2419,8 +2491,8 @@
           "timeoutSeconds": {
             "default": 180,
             "type": "integer",
-            "minimum": 15,
-            "maximum": 300
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
