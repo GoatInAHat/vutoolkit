@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.6",
+  "toolfactoryVersion": "0.4.7",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",
@@ -162,7 +162,7 @@
       "state": "generated"
     },
     "hosts/browser/package.json": {
-      "sha256": "efbb8106568ab97beef3111f9defe8e07b696088835e8642d51b46a5776eaae3",
+      "sha256": "c57d4481e3d558180d616d245baac9fe2207223042d9d7e7f6c376c150e2cd88",
       "state": "generated",
       "keys": [
         "name",
@@ -268,7 +268,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "89aec17b4cb18e823dc1012657af6e9507652de5d69ac768e3030636714e60c3",
+      "sha256": "e6541078a773a120f80ff40fb57c654b32a4f67a91bb3faf94546ff98d238a8a",
       "state": "generated",
       "keys": [
         "name",
