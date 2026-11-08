@@ -102,7 +102,7 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "5f5aa6f677d4d35305aeccd150960136c0342a88e09bfb9aaee6bde33f4b4fbd",
+      "sha256": "4ed710c5e398e9db5c7205142c5eff86cad3c4a153043f11fc5973d006bbd870",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
@@ -312,14 +312,8 @@
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "bc2ba03e563b8176e27089c0e0d7f346c4711d651b9e017a910ed2d218226224",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:entry",
-          "end": "// /tf:entry"
-        }
-      ]
+      "sha256": "7a127679d22ced7b986a27024a673299b10ca449d893c269ae497083300caf6e",
+      "state": "manual"
     },
     "hosts/openclaw/tsconfig.json": {
       "sha256": "106c946ea50b5c1a334631ad22dbbadcc7d1c19d416d7d02fd8bff0f75b2d603",
