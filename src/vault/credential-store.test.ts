@@ -13,7 +13,7 @@ const token = { accessToken: "synthetic-token", acquiredAtMs: 10, expiresAtMs: 1
 const session = harvestToStoredSession("microsoft", [{ name: "ESTS", value: "synthetic-cookie", domain: "login.microsoftonline.com" }], "2026-10-09T00:00:00Z");
 function fixture() {
   const values = new Map<string, string>();
-  const secrets: NativeSecrets = { read: (name) => values.get(name) ?? null, write: (name, value) => { values.set(name, value); } };
+  const secrets: NativeSecrets = { read: (name) => values.get(name) ?? null, write: async (name, value) => { values.set(name, value); } };
   return { values, secrets };
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -30,7 +30,7 @@ describe("native credential storage", () => {
     expect(sessionStore(dir).cookies("microsoft")).toEqual(session.cookies);
     expect(await sessionStore(dir).list()).toEqual([{ idp: "microsoft", acquiredAt: session.acquiredAt, healthy: true }]);
     const graph = graphTokenCache(dir);
-    graph.put(token);
+    await graph.put(token);
     const result = await ensureGraphToken([], graphTokenCache(dir), { now: () => 100, fetchImpl: vi.fn() });
     expect(result.source).toBe("cache");
     expect(existsSync(join(dir, "sessions.vault.json"))).toBe(false);
@@ -54,9 +54,9 @@ describe("native credential storage", () => {
     const dir = fresh(); const { values, secrets } = fixture();
     const vu = { idp: "vanderbilt", acquiredAt: session.acquiredAt, healthy: true, cookieHeader: "synthetic-vu-new", cookies: [] };
     vi.spyOn(nativeSecrets, "read").mockImplementation(secrets.read);
-    vi.spyOn(nativeSecrets, "write").mockImplementation((name, value) => {
+    vi.spyOn(nativeSecrets, "write").mockImplementation(async (name, value) => {
       values.set(credentialSecretName(dir, "sessions_vanderbilt"), JSON.stringify(vu));
-      secrets.write(name, value);
+      await secrets.write(name, value);
     });
     const env = { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" };
     await sessionStore(dir, env).put(session);
@@ -69,43 +69,43 @@ describe("native credential storage", () => {
     expect(await sessionStore(dir, env).get("microsoft")).toBeNull();
   });
 
-  it("migrates both caches with exact readback while preserving originals and returning metadata only", () => {
+  it("migrates both caches with exact readback while preserving originals and returning metadata only", async () => {
     const dir = fresh(); const { values, secrets } = fixture();
     const sessionsRaw = JSON.stringify({ version: 1, rows: { microsoft: session } });
     writeFileSync(join(dir, "sessions.vault.json"), sessionsRaw);
     writeFileSync(join(dir, "graph-token.json"), JSON.stringify(token));
     const guarded = credentialStorage(dir, "graph", { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }, secrets)!;
     expect(() => guarded.read()).toThrow(/migration/);
-    expect(() => guarded.write(JSON.stringify(token))).toThrow(/migration/);
-    const result = migrateCredentialCaches(dir, secrets);
+    await expect(guarded.write(JSON.stringify(token))).rejects.toThrow(/migration/);
+    const result = await migrateCredentialCaches(dir, secrets);
     expect(result.migrated).toHaveLength(3);
     expect(result.originalsPreserved).toBe(true);
     expect(JSON.stringify(result)).not.toMatch(/synthetic-token|synthetic-cookie/);
     expect(values.get(credentialSecretName(dir, "sessions_microsoft"))).toBe(JSON.stringify(session));
     expect(guarded.read()).toBe(JSON.stringify(token));
     expect(readFileSync(join(dir, "sessions.vault.json"), "utf8")).toBe(sessionsRaw);
-    expect(migrateCredentialCaches(dir, secrets)).toEqual(result);
+    expect(await migrateCredentialCaches(dir, secrets)).toEqual(result);
   });
 
-  it("preserves originals on failed readback and rejects conflicting existing native values", () => {
+  it("preserves originals on failed readback and rejects conflicting existing native values", async () => {
     const dir = fresh(); const { values, secrets } = fixture();
     const path = join(dir, "graph-token.json"); const raw = JSON.stringify(token);
     writeFileSync(path, raw);
-    const broken: NativeSecrets = { read: () => null, write: () => {} };
-    expect(() => migrateCredentialCaches(dir, broken)).toThrow(/readback/);
+    const broken: NativeSecrets = { read: () => null, write: async () => {} };
+    await expect(migrateCredentialCaches(dir, broken)).rejects.toThrow(/readback/);
     expect(readFileSync(path, "utf8")).toBe(raw);
     values.set(credentialSecretName(dir, "graph"), "different-synthetic-value");
-    expect(() => migrateCredentialCaches(dir, secrets)).toThrow(/differs/);
+    await expect(migrateCredentialCaches(dir, secrets)).rejects.toThrow(/differs/);
     expect(values.get(credentialSecretName(dir, "graph"))).toBe("different-synthetic-value");
     expect(readFileSync(path, "utf8")).toBe(raw);
   });
 
-  it("detects old-writer activity during migration and never deletes the original", () => {
+  it("detects old-writer activity during migration and never deletes the original", async () => {
     const dir = fresh(); const { secrets } = fixture(); const path = join(dir, "graph-token.json");
     writeFileSync(path, JSON.stringify(token));
     const updated = JSON.stringify({ ...token, accessToken: "synthetic-newer-token" });
-    const concurrent: NativeSecrets = { ...secrets, write(name, value) { secrets.write(name, value); writeFileSync(path, updated); } };
-    expect(() => migrateCredentialCaches(dir, concurrent)).toThrow(/changed during migration/);
+    const concurrent: NativeSecrets = { ...secrets, async write(name, value) { await secrets.write(name, value); writeFileSync(path, updated); } };
+    await expect(migrateCredentialCaches(dir, concurrent)).rejects.toThrow(/changed during migration/);
     expect(readFileSync(path, "utf8")).toBe(updated);
   });
 
@@ -117,7 +117,7 @@ describe("native credential storage", () => {
     await expect(sessionStore(dir, { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }).put(session)).rejects.toThrow(/invalid/);
     values.set(credentialSecretName(dir, "graph"), "{}");
     expect(() => graphTokenCache(dir, { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }).read()).toThrow(/invalid/);
-    expect(() => new NativeCredentialStorage("TEST", secrets).write("x".repeat(65_537))).toThrow(/64 KiB/);
+    await expect(new NativeCredentialStorage("TEST", secrets).write("x".repeat(65_537))).rejects.toThrow(/64 KiB/);
     vi.mocked(nativeSecrets.read).mockImplementation(() => { throw new Error("synthetic vault unavailable"); });
     expect(() => graphTokenCache(dir, { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }).read()).toThrow(/vault unavailable/);
     expect(existsSync(join(dir, "graph-token.json"))).toBe(false);
