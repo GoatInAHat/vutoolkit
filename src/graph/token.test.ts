@@ -70,7 +70,7 @@ describe("classifyAuthorize", () => {
 describe("ensureGraphToken", () => {
   it("serves a live cached token without any network", async () => {
     const cache = newCache();
-    cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
+    await cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
     const token = await ensureGraphToken(entsCookies, cache, {
       fetchImpl: (() => Promise.reject(new Error("network must not be touched"))) as unknown as typeof fetch,
     });
@@ -160,7 +160,7 @@ describe("ensureGraphToken", () => {
 
   it("force re-mints even with a live cache", async () => {
     const cache = newCache();
-    cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
+    await cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
     const fetchImpl = (async (url: string | URL | Request) =>
       String(url).includes("/authorize")
         ? new Response(null, { status: 302, headers: { location: REDIRECT + "?code=XYZ" } })
@@ -198,7 +198,7 @@ describe("ensureGraphToken failure modes", () => {
   it("a refusal leaves a previously cached token untouched instead of inventing a fresh one", async () => {
     const cache = newCache();
     const stale = { accessToken: "STALE", acquiredAtMs: 1, expiresAtMs: 2 };
-    cache.put(stale);
+    await cache.put(stale);
     await expect(ensureGraphToken(entsCookies, cache, { fetchImpl: signInPageFetch() })).rejects.toMatchObject({
       code: "GRAPH_TOKEN_UNAVAILABLE",
     });
@@ -235,37 +235,37 @@ describe("GraphTokenCache bounds", () => {
     return { accessToken: "A".repeat(bytes - skeletonLength), ...fixed };
   };
 
-  it("refuses an oversized envelope in file mode and leaves no readable entry", () => {
+  it("refuses an oversized envelope in file mode and leaves no readable entry", async () => {
     const cache = newCache();
     const token = tokenSizedTo(MAX_ENVELOPE_BYTES + 1);
     expect(Buffer.byteLength(JSON.stringify(token), "utf8")).toBe(MAX_ENVELOPE_BYTES + 1);
     let error: unknown;
-    try { cache.put(token); } catch (e) { error = e; }
+    try { await cache.put(token); } catch (e) { error = e; }
     expect(error).toBeInstanceOf(VaultNotWiredError);
     expect((error as Error).message).toContain(String(MAX_ENVELOPE_BYTES));
     expect((error as Error).message).toContain("no credential was written");
     expect(cache.read()).toBeNull();
   });
 
-  it("never calls the credential storage write for an oversized envelope", () => {
+  it("never calls the credential storage write for an oversized envelope", async () => {
     const writes: string[] = [];
     const storage: CredentialStorage = {
       location: "fake:vault",
       read: () => null,
-      write: (value) => { writes.push(value); },
+      write: async (value) => { writes.push(value); },
     };
     const cache = new GraphTokenCache(join(tmpdir(), "unused-graph-token.json"), storage);
     const token = tokenSizedTo(MAX_ENVELOPE_BYTES + 1);
-    expect(() => cache.put(token)).toThrow(VaultNotWiredError);
+    await expect(cache.put(token)).rejects.toThrow(VaultNotWiredError);
     expect(writes).toHaveLength(0);
     expect(cache.read()).toBeNull();
   });
 
-  it("writes and reads back an envelope at exactly the boundary", () => {
+  it("writes and reads back an envelope at exactly the boundary", async () => {
     const cache = newCache();
     const token = tokenSizedTo(MAX_ENVELOPE_BYTES);
     expect(Buffer.byteLength(JSON.stringify(token), "utf8")).toBe(MAX_ENVELOPE_BYTES);
-    cache.put(token);
+    await cache.put(token);
     expect(cache.read()).toEqual(token);
   });
 });

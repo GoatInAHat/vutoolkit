@@ -111,7 +111,7 @@ export class GraphTokenCache {
     return null;
   }
 
-  put(token: CachedToken): void {
+  async put(token: CachedToken): Promise<void> {
     const envelope = JSON.stringify(token);
     // Refuse before touching either backend: the native vault would reject this envelope, and a
     // file-mode cache must not store what the native vault cannot - a stale readable entry would
@@ -123,7 +123,7 @@ export class GraphTokenCache {
           MAX_ENVELOPE_BYTES +
           "-byte limit; no credential was written.",
       );
-    if (this.storage) { this.storage.write(envelope); return; }
+    if (this.storage) { await this.storage.write(envelope); return; }
     mkdirSync(dirname(this.filePath), { recursive: true });
     const temp = this.filePath + "." + process.pid + ".tmp";
     writeFileSync(temp, JSON.stringify(token, null, 2) + "\n", { mode: 0o600 });
@@ -297,7 +297,7 @@ async function mintGraphToken(cookies: CookieRecord[], cache: GraphTokenCache, d
     acquiredAtMs: now(),
     expiresAtMs: now() + expiresIn * 1000,
   };
-  cache.put(token);
+  await cache.put(token);
   return { accessToken: token.accessToken, expiresAtMs: token.expiresAtMs, source: "minted" };
 }
 
