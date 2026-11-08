@@ -23,7 +23,7 @@ import { harvestToStoredSession, type CookieRecord, type FileSessionStore } from
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
 import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
-import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
+import { CounterAccountingError, runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
 import { probeSession, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
@@ -147,23 +147,30 @@ function resultFrom(idp: Idp, stored: StoredSession, finalUrl: string): EnsureRe
 async function mintVanderbilt(ctx: MintContext): Promise<EnsureResult> {
   checkAbort(ctx.deps);
   const passkey = ctx.passkey();
-  const minted: MintedSession = await (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
-      requireAssertion: true });
-  if (minted.assertedSignCount !== undefined && !(ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) {
+  const accountCounter = async (count: number) => {
+    if ((ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) return;
     const read = ctx.deps.secretsRead ?? defaultSecretsRead;
     const currentRaw = read("VANDERBILT_PASSKEY");
     const current = parseVaultPasskey(currentRaw);
     if (["credentialId", "privateKey", "userHandle", "rpId"].some(field => current[field as keyof VaultPasskey] !== passkey[field as keyof VaultPasskey]))
       throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The active passkey changed during sign-in; no credential was overwritten.", { retryable: false });
-    if (minted.assertedSignCount > current.signCount) {
-      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: minted.assertedSignCount });
+    if (count > current.signCount) {
+      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: count });
       if (read("VANDERBILT_PASSKEY") !== currentRaw)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey changed before its counter update; no credential was overwritten.", { retryable: false });
       await (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
       if (read("VANDERBILT_PASSKEY") !== updated)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey counter write could not be verified; no session replacement was published.", { retryable: false });
-      passkey.signCount = minted.assertedSignCount;
     }
+    // Refresh the in-memory material too, so any outer retry starts above durable state.
+    passkey.signCount = Math.max(passkey.signCount, count, current.signCount);
+  };
+  const minted: MintedSession = await (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
+    requireAssertion: true, signal: ctx.deps.signal, accountCounter });
+  // Compatibility with injected ceremonies; the real ceremony accounts on every exit.
+  if (minted.assertedSignCount !== undefined) {
+    try { await accountCounter(minted.assertedSignCount); }
+    catch (cause) { throw new CounterAccountingError(cause); }
   }
   checkAbort(ctx.deps);
   const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
@@ -237,6 +244,8 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
   try {
     return await attempt(1);
   } catch (error) {
+    // Never replace accounting uncertainty with an abort reason and release its flight.
+    if (error instanceof CounterAccountingError) throw error;
     checkAbort(deps);
     if (isPermanent(error)) throw error;
     await sleep(deps.retryDelayMs ?? RETRY_DELAY_MS);
@@ -275,7 +284,12 @@ export function ensureSession(idp: Idp, store: FileSessionStore, deps: EnsureDep
   if (!flight) {
     const controller = new AbortController();
     const work = Promise.resolve().then(() => ensureOnce(idp, store, { ...deps, signal: controller.signal }))
-      .finally(() => inflight.delete(key));
+      .then(result => { inflight.delete(key); return result; }, error => {
+        // A failed readback must not release ownership for a second assertion with stale
+        // material. Retain this rejected flight until operator reconciliation/restart.
+        if (!(error instanceof CounterAccountingError)) inflight.delete(key);
+        throw error;
+      });
     flight = { work, controller, waiters: 0 };
     inflight.set(key, flight);
   }
