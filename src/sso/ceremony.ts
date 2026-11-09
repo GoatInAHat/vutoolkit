@@ -40,6 +40,10 @@ export interface CeremonyOptions {
   timeoutMs?: number;
   /** Prove this key signs in from an empty, disposable browser context. */
   requireAssertion?: boolean;
+  signal?: AbortSignal;
+  /** Runs before authenticator removal on every exit, including failed harvests/restarts. */
+  accountCounter?: (count: number) => Promise<void>;
+
 }
 
 export interface MintedSession {
@@ -53,6 +57,13 @@ export interface MintedSession {
   passkeyVerified?: boolean;
   /** Observed counter after the verified assertion, for vault persistence. */
   assertedSignCount?: number;
+}
+
+/** Uncertain accounting is not a retryable sign-in failure. The owner must fail closed. */
+export class CounterAccountingError extends AuthError {
+  constructor(cause: unknown) {
+    super("VAULT_SECRET_UNAVAILABLE", "Passkey counter accounting could not be verified; this flight is quarantined until operator reconciliation.", { retryable: false, cause });
+  }
 }
 
 /** base64url/base64 to padded base64, exactly as CDP addCredential expects. */
@@ -128,15 +139,32 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
   // the authenticator and credential before navigation, not after an assertion has started.
   return withCdpTab(opts.cdpUrl, "about:blank", async (tab) => {
     const { send, evaluate } = tab;
+    const checkAbort = () => opts.signal?.throwIfAborted();
+    checkAbort();
     await send("Page.enable");
+    checkAbort();
     const signCountUsed = (Number(opts.passkey.signCount) || 0) + 1;
     let credentialSignCount = signCountUsed;
     let observedSignCount = signCountUsed;
+    let au: { authenticatorId: string } | undefined;
+    let armed = false;
+    let stopping: Promise<unknown> | undefined;
+    let accountingFailure: CounterAccountingError | undefined;
+    const stopPresence = () => {
+      if (au && armed) stopping ??= send("WebAuthn.setAutomaticPresenceSimulation", { authenticatorId: au!.authenticatorId, enabled: false });
+      // Attach immediately: an abort event must never create an unhandled rejection.
+      void stopping?.catch(() => {});
+    };
+    opts.signal?.addEventListener("abort", stopPresence);
     const installAuthenticator = async () => {
+      checkAbort();
       await send("WebAuthn.enable");
+      checkAbort();
       const authenticator = await send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
-        options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
+        options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: false },
       });
+      au = authenticator;
+      checkAbort();
       await send("WebAuthn.addCredential", {
         authenticatorId: authenticator.authenticatorId,
         credential: {
@@ -150,14 +178,37 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
       });
       return authenticator;
     };
-    let au = await installAuthenticator();
     const assertedCounter = async () => {
-      const { credentials } = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
+      const { credentials } = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au!.authenticatorId });
       const count = credentials.find(c => toCdpB64(c.credentialId) === toCdpB64(opts.passkey.credentialId))?.signCount;
-      return typeof count === "number" && Number.isFinite(count) && count > credentialSignCount ? count : undefined;
+      if (typeof count !== "number" || !Number.isFinite(count) || count < credentialSignCount)
+        throw new Error("Authenticator counter unavailable or regressed");
+      return count > credentialSignCount ? count : undefined;
+    };
+    // Quiesce before observing a final counter. No cancellation races this cleanup.
+    const drainCounter = async () => {
+      if (accountingFailure) throw accountingFailure;
+      if (!au || !armed) return;
+      try {
+        stopPresence();
+        await stopping;
+        await send("Page.navigate", { url: "about:blank" });
+        const count = await assertedCounter();
+        observedSignCount = Math.max(observedSignCount, count ?? credentialSignCount);
+        if (observedSignCount > signCountUsed) await opts.accountCounter?.(observedSignCount);
+        armed = false;
+      } catch (cause) { accountingFailure = new CounterAccountingError(cause); throw accountingFailure; }
+    };
+    const navigateLogin = async () => {
+      checkAbort();
+      armed = true; // Treat even a failed CDP response as potentially issued.
+      await send("WebAuthn.setAutomaticPresenceSimulation", { authenticatorId: au!.authenticatorId, enabled: true });
+      checkAbort();
+      await send("Page.navigate", { url: loginUrl });
     };
     try {
-      await send("Page.navigate", { url: loginUrl });
+      await installAuthenticator();
+      await navigateLogin();
 
       const deadline = Date.now() + timeoutMs;
       let finalUrl = "";
@@ -169,7 +220,9 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
       while (Date.now() < deadline) {
         await sleep(first ? 2500 : stepMs);
         first = false;
+        checkAbort();
         const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as OktaProbe | null;
+        checkAbort();
         if (!probe) continue; // mid-navigation; probe again
         finalUrl = String(probe.url ?? "");
         const state = classifyOktaFlow(probe);
@@ -183,13 +236,16 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
               exactHome = success.origin === "https://onevu.vanderbilt.edu" && success.pathname === "/app/UserHome";
             } catch { /* reject malformed success URL */ }
             if (!exactHome) throw new AuthError("OKTA_FLOW_CHANGED", "Passkey verification did not finish on OneVU's authenticated home; no verified session was returned.", { retryable: false });
-            const asserted = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au.authenticatorId });
+            const asserted = await send<{ credentials: Array<{ credentialId: string; signCount: number }> }>("WebAuthn.getCredentials", { authenticatorId: au!.authenticatorId });
             const key = asserted.credentials.find((credential) => toCdpB64(credential.credentialId) === toCdpB64(opts.passkey.credentialId));
             if (key && Number.isFinite(key.signCount) && key.signCount > credentialSignCount) observedSignCount = Math.max(observedSignCount, key.signCount);
             if (!key || !Number.isFinite(key.signCount) || observedSignCount <= signCountUsed)
               throw new AuthError("OKTA_REJECTED", "OneVU reached a signed-in page without a verified assertion from the newly enrolled toolkit passkey; no verified session was returned.", { retryable: false });
             assertedSignCount = observedSignCount;
           }
+          await drainCounter();
+          checkAbort();
+          if (observedSignCount > signCountUsed) assertedSignCount = observedSignCount;
           const cookies = await harvestCookies(send);
           const expiries = cookies.map((c) => c.expires).filter((e): e is number => typeof e === "number" && e > 0);
           return {
@@ -218,14 +274,16 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
             // Chromium may increment the counter before presence completes, while get() is
             // still pending. Preserve that counter across authenticator replacement rather
             // than treating it alone as proof of a completed login.
-            observedSignCount = Math.max(observedSignCount, await assertedCounter() ?? signCountUsed);
-            await send("Page.navigate", { url: "about:blank" });
-            observedSignCount = Math.max(observedSignCount, await assertedCounter() ?? signCountUsed);
-            await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au.authenticatorId });
+            await drainCounter();
+            checkAbort();
+            await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au!.authenticatorId });
+            au = undefined;
             await send("WebAuthn.disable", {});
+            checkAbort();
             credentialSignCount = Math.max(credentialSignCount, observedSignCount) + 1;
-            au = await installAuthenticator();
-            await send("Page.navigate", { url: loginUrl });
+            stopping = undefined;
+            await installAuthenticator();
+            await navigateLogin();
             verificationRestarts++;
             verificationStarted = undefined;
             identifierSubmits = 0;
@@ -235,8 +293,10 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
         }
         if (state.kind === "identifier" && identifierSubmits < 2) {
           const filled = await evaluate(`(${FILL_NATIVE})('input[name=identifier]', ${JSON.stringify(opts.email)})`).catch(() => false);
+          checkAbort();
           if (filled !== true) continue;
           await evaluate(KEEP_SIGNED_IN).catch(() => false);
+          checkAbort();
           if ((await evaluate(`(${CLICK_VISIBLE})('input[type=submit],button[type=submit]')`).catch(() => false)) === true) identifierSubmits++;
         }
       }
@@ -251,7 +311,11 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
         { retryable: true },
       );
     } finally {
-      await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au.authenticatorId }).catch(() => {});
+      try { await drainCounter(); }
+      finally {
+        opts.signal?.removeEventListener("abort", stopPresence);
+        if (au) await send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: au.authenticatorId }).catch(() => {});
+      }
     }
   }, { isolated: opts.requireAssertion === true });
 }

@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.6",
+  "toolfactoryVersion": "0.4.8",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",
@@ -102,7 +102,7 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "5f5aa6f677d4d35305aeccd150960136c0342a88e09bfb9aaee6bde33f4b4fbd",
+      "sha256": "fb08b40f63c23b64385525af6c893c6f1554a6dec71f6a6bb8c1959dccc04bc6",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
@@ -162,7 +162,7 @@
       "state": "generated"
     },
     "hosts/browser/package.json": {
-      "sha256": "efbb8106568ab97beef3111f9defe8e07b696088835e8642d51b46a5776eaae3",
+      "sha256": "c57d4481e3d558180d616d245baac9fe2207223042d9d7e7f6c376c150e2cd88",
       "state": "generated",
       "keys": [
         "name",
@@ -268,7 +268,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "89aec17b4cb18e823dc1012657af6e9507652de5d69ac768e3030636714e60c3",
+      "sha256": "260ac38b93a25703ebbb8ffee6cbd1e645106971d7854f2c9446a808d016b08a",
       "state": "generated",
       "keys": [
         "name",
@@ -300,11 +300,11 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "10ecde42b77e31d1a38b67d0b836bdbafb529da787e654034539b7bddadefc98",
+      "sha256": "ef89bcecdb13d8408852bd0d5ae357aac5fb7391187ae36887f6b53d37431e6a",
       "state": "generated"
     },
     "hosts/openclaw/skills/vutoolkit/SKILL.md": {
-      "sha256": "6dc2e4e0fb157d939b77c279eb2f1a7c729df0050cd1bbeb38a9c5341feceb16",
+      "sha256": "f33b84f584a544e10edf13b1c060a5df42ead01b254a0c45b65eb3fbe2173867",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
@@ -312,17 +312,11 @@
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "bc2ba03e563b8176e27089c0e0d7f346c4711d651b9e017a910ed2d218226224",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:entry",
-          "end": "// /tf:entry"
-        }
-      ]
+      "sha256": "7a127679d22ced7b986a27024a673299b10ca449d893c269ae497083300caf6e",
+      "state": "manual"
     },
     "hosts/openclaw/tsconfig.json": {
-      "sha256": "106c946ea50b5c1a334631ad22dbbadcc7d1c19d416d7d02fd8bff0f75b2d603",
+      "sha256": "f4f56f60957adc5157ea2cdf577df0eba468de296bcac275951923c84af57288",
       "state": "generated"
     },
     "hosts/openclaw/vitest.config.ts": {
@@ -366,7 +360,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "8adf38115f2035a7c801f0a89fa7c76630a368cd2514b0fd869815c1fd38ced4",
+      "sha256": "7a93c89ac13fbea2c9a5df51a9535bd1bbb3ebc703ded3d6dc4d7daebbb73952",
       "state": "generated",
       "regions": [
         {
@@ -452,7 +446,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "837516c07974a8890f4d76d48839a74e9967f56527588096be523528570bfa5c",
+      "sha256": "858f420a1014a8234623081a6d39d7d3f325bc0c4b759e0f19627395cb343a22",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

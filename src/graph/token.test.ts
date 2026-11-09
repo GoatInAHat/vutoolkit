@@ -67,7 +67,7 @@ describe("classifyAuthorize", () => {
 describe("ensureGraphToken", () => {
   it("serves a live cached token without any network", async () => {
     const cache = newCache();
-    cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
+    await cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
     const token = await ensureGraphToken(entsCookies, cache, {
       fetchImpl: (() => Promise.reject(new Error("network must not be touched"))) as unknown as typeof fetch,
     });
@@ -157,7 +157,7 @@ describe("ensureGraphToken", () => {
 
   it("force re-mints even with a live cache", async () => {
     const cache = newCache();
-    cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
+    await cache.put({ accessToken: "CACHED", acquiredAtMs: Date.now(), expiresAtMs: Date.now() + 600_000 });
     const fetchImpl = (async (url: string | URL | Request) =>
       String(url).includes("/authorize")
         ? new Response(null, { status: 302, headers: { location: REDIRECT + "?code=XYZ" } })

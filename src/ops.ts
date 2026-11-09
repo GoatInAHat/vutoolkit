@@ -7,6 +7,7 @@
  * credential backend; sessions.refresh re-mints through the same store plus the
  * CDP ceremony (OneVU passkey or Microsoft Entra carry).
  */
+import { withCallerBudget } from "./sso/budget.js";
 import { readFileSync } from "node:fs";
 import { yesOperations } from "./yes/operations.js";
 import { z } from "zod";
@@ -292,4 +293,4 @@ export const operations = [
     annotations: { readOnlyHint: true },
     handler: async ({ transcript }) => verifyTranscript(transcript ?? SYNTHETIC_TRANSCRIPT),
   }),
-];
+].map(op => withCallerBudget(op as import("./toolfactory/types.js").Operation));

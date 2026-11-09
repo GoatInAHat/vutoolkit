@@ -11,18 +11,19 @@
  * - The managed browser is started when its CDP endpoint is down (a Gateway restart kills it).
  * - Microsoft rides OneVU federation: when the Outlook carry lands on OneVU sign-in, the passkey
  *   ceremony signs the browser in and the carry runs again.
- * - Concurrent ensure calls for one vault and IdP share a single attempt, and browser ceremonies
- *   run one at a time, so parallel agents never race two sign-ins in one browser profile.
+ * - Concurrent refresh and ensure calls for one vault and IdP share one attempt through
+ *   counter persistence. Different IdPs stay independent; federation shares the OneVU mint.
  * - A transient failure is retried once; a permanent one (missing vault secret, harvest without
  *   IdP cookies, a Microsoft password prompt) fails immediately with a typed, actionable message.
  * - The whole call is bounded, so a caller is never left waiting on a hung browser.
  */
+import { authSignal } from "./budget.js";
 import { execFileSync } from "node:child_process";
 import { harvestToStoredSession, type CookieRecord, type FileSessionStore } from "../vault/file-store.js";
 import { VaultNotWiredError, type Idp, type SessionMeta, type StoredSession } from "../vault/index.js";
 import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
-import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
+import { CounterAccountingError, runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
 import { probeSession, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
@@ -38,6 +39,8 @@ const RETRY_DELAY_MS = 3_000;
 export interface EnsureDeps {
   /** Force a replacement without deleting the current session before success. */
   forceRefresh?: boolean;
+  /** Cancellation is checked before assertions and after durable counter readback. */
+  signal?: AbortSignal;
   /** Override for tests; defaults to the real CDP ceremony. */
   ceremony?: Ceremony;
   /** Override for tests; defaults to the real Microsoft Entra-carry ceremony. */
@@ -48,7 +51,7 @@ export interface EnsureDeps {
   ensureBrowser?: (cdpUrl: string) => Promise<void>;
   /** Override for tests; defaults to the OpenClaw vault CLI. Never logs or echoes values. */
   secretsRead?: (name: string) => string;
-  secretsWrite?: (name: string, value: string) => void;
+  secretsWrite?: (name: string, value: string) => void | Promise<void>;
   env?: NodeJS.ProcessEnv;
   now?: () => Date;
   /** Override for tests; delay before the single retry of a transient failure. */
@@ -126,24 +129,8 @@ export async function defaultEnsureBrowser(cdpUrl: string, env: NodeJS.ProcessEn
   await ensureBrowser(sameEndpoint ? selected : { cdpUrl, source: "endpoint", canStart: false });
 }
 
-/**
- * Browser ceremonies run one at a time: two tabs signing in at once can leave both
- * half-authenticated. A predecessor is waited on for at most CEREMONY_LOCK_MAX_WAIT_MS (longer
- * than any ceremony's own deadline), so one stuck ceremony can never block later sign-ins.
- */
-const CEREMONY_LOCK_MAX_WAIT_MS = 150_000;
-let ceremonyQueue: Promise<unknown> = Promise.resolve();
-function oneCeremonyAtATime<T>(work: () => Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const maxWait = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, CEREMONY_LOCK_MAX_WAIT_MS);
-    timer.unref(); // never keep a CLI process alive just to wait out the cap
-  });
-  const gate = Promise.race([ceremonyQueue.catch(() => undefined), maxWait]).finally(() => clearTimeout(timer));
-  const run = gate.then(work);
-  ceremonyQueue = run.catch(() => undefined);
-  return run;
-}
+/** No timeout releases ownership of an assertion or its durable counter write. */
+function checkAbort(deps: EnsureDeps): void { deps.signal?.throwIfAborted(); }
 
 interface MintContext {
   store: FileSessionStore;
@@ -157,47 +144,57 @@ function resultFrom(idp: Idp, stored: StoredSession, finalUrl: string): EnsureRe
   return { source: "minted", idp, acquiredAt: stored.acquiredAt, expiresAt: stored.expiresAt, healthy: true, finalUrl };
 }
 
-async function mintVanderbilt(ctx: MintContext, requireAssertion = true): Promise<EnsureResult> {
+async function mintVanderbilt(ctx: MintContext): Promise<EnsureResult> {
+  checkAbort(ctx.deps);
   const passkey = ctx.passkey();
-  const minted: MintedSession = await oneCeremonyAtATime(() =>
-    (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
-      ...(requireAssertion ? { requireAssertion: true } : {}) }),
-  );
-  const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
-  if (minted.passkeyVerified && minted.assertedSignCount !== undefined && !(ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) {
+  const accountCounter = async (count: number) => {
+    if ((ctx.deps.env ?? process.env).VUTOOLKIT_PASSKEY_JSON) return;
     const read = ctx.deps.secretsRead ?? defaultSecretsRead;
     const currentRaw = read("VANDERBILT_PASSKEY");
     const current = parseVaultPasskey(currentRaw);
     if (["credentialId", "privateKey", "userHandle", "rpId"].some(field => current[field as keyof VaultPasskey] !== passkey[field as keyof VaultPasskey]))
       throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The active passkey changed during sign-in; no credential was overwritten.", { retryable: false });
-    if (minted.assertedSignCount > current.signCount) {
-      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: minted.assertedSignCount });
+    if (count > current.signCount) {
+      const updated = JSON.stringify({ ...JSON.parse(currentRaw), signCount: count });
       if (read("VANDERBILT_PASSKEY") !== currentRaw)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey changed before its counter update; no credential was overwritten.", { retryable: false });
-      (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
+      await (ctx.deps.secretsWrite ?? nativeSecrets.write)("VANDERBILT_PASSKEY", updated);
       if (read("VANDERBILT_PASSKEY") !== updated)
         throw new AuthError("VAULT_SECRET_UNAVAILABLE", "The passkey counter write could not be verified; no session replacement was published.", { retryable: false });
-      passkey.signCount = minted.assertedSignCount;
     }
+    // Refresh the in-memory material too, so any outer retry starts above durable state.
+    passkey.signCount = Math.max(passkey.signCount, count, current.signCount);
+  };
+  const minted: MintedSession = await (ctx.deps.ceremony ?? runSsoCeremony)({ cdpUrl: ctx.cdpUrl, email: ctx.email(), passkey,
+    requireAssertion: true, signal: ctx.deps.signal, accountCounter });
+  // Compatibility with injected ceremonies; the real ceremony accounts on every exit.
+  if (minted.assertedSignCount !== undefined) {
+    try { await accountCounter(minted.assertedSignCount); }
+    catch (cause) { throw new CounterAccountingError(cause); }
   }
+  checkAbort(ctx.deps);
+  const stored = harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt);
   await ctx.store.put(stored);
   return { ...resultFrom("vanderbilt", stored, minted.finalUrl),
     ...(minted.passkeyVerified ? { passkeyVerified: true, assertedSignCount: minted.assertedSignCount } : {}) };
 }
 
 async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {
-  const carry = () =>
-    oneCeremonyAtATime(() => (ctx.deps.microsoftCeremony ?? microsoftSessionFromSso)({ cdpUrl: ctx.cdpUrl, email: ctx.email() }));
+  const carry = () => {
+    checkAbort(ctx.deps);
+    return (ctx.deps.microsoftCeremony ?? microsoftSessionFromSso)({ cdpUrl: ctx.cdpUrl, email: ctx.email() });
+  };
   let minted: MintedMicrosoftSession;
   try {
     minted = await carry();
   } catch (error) {
     if (!(error instanceof AuthError && error.code === "OKTA_SESSION_REQUIRED")) throw error;
     // Federation hop with no Okta session in the browser: sign in with the passkey, carry again.
-    await mintVanderbilt(ctx, false); // The carry needs the shared browser's OneVU session.
+    await ensureSession("vanderbilt", ctx.store, { ...ctx.deps, forceRefresh: true }); // The carry needs the shared browser's OneVU session.
     minted = await carry();
   }
   const stored = harvestToStoredSession("microsoft", minted.cookies, minted.acquiredAt);
+  checkAbort(ctx.deps);
   await ctx.store.put(stored);
   return resultFrom("microsoft", stored, minted.finalUrl);
 }
@@ -212,6 +209,7 @@ function isPermanent(error: unknown): boolean {
 }
 
 async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promise<EnsureResult> {
+  checkAbort(deps);
   const env = deps.env ?? process.env;
   const secretsRead = deps.secretsRead ?? defaultSecretsRead;
   const browser = await resolveBrowser(env);
@@ -229,6 +227,7 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
   };
   const trace = tracer(env, idp);
   const attempt = async (n: number): Promise<EnsureResult> => {
+    checkAbort(deps);
     const started = Date.now();
     try {
       if (deps.ensureBrowser) await deps.ensureBrowser(cdpUrl);
@@ -245,6 +244,9 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
   try {
     return await attempt(1);
   } catch (error) {
+    // Never replace accounting uncertainty with an abort reason and release its flight.
+    if (error instanceof CounterAccountingError) throw error;
+    checkAbort(deps);
     if (isPermanent(error)) throw error;
     await sleep(deps.retryDelayMs ?? RETRY_DELAY_MS);
     return attempt(2);
@@ -271,15 +273,46 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
   return mint(idp, store, deps);
 }
 
-/** Concurrent ensure calls for one vault file and IdP share a single attempt. */
-const inflight = new Map<string, Promise<EnsureResult>>();
+/** Ownership lasts until the actual work settles, not until a caller times out. */
+const inflight = new Map<string, { work: Promise<EnsureResult>; controller: AbortController; waiters: number }>();
 
 export function ensureSession(idp: Idp, store: FileSessionStore, deps: EnsureDeps = {}): Promise<EnsureResult> {
-  const key = `${store.location}::${idp}::${deps.forceRefresh ? "refresh" : "ensure"}`;
-  const running = inflight.get(key);
-  if (running) return running;
-  const work = withDeadline(ensureOnce(idp, store, deps), deps.deadlineMs ?? ENSURE_DEADLINE_MS, `sessions.ensure(${idp})`)
-    .finally(() => inflight.delete(key));
-  inflight.set(key, work);
-  return work;
+  deps = { ...deps, signal: deps.signal ?? authSignal() };
+  try { checkAbort(deps); } catch (error) { return Promise.reject(error); }
+  const key = `${store.location}::${idp}`;
+  let flight = inflight.get(key);
+  if (!flight) {
+    const controller = new AbortController();
+    const work = Promise.resolve().then(() => ensureOnce(idp, store, { ...deps, signal: controller.signal }))
+      .then(result => { inflight.delete(key); return result; }, error => {
+        // A failed readback must not release ownership for a second assertion with stale
+        // material. Retain this rejected flight until operator reconciliation/restart.
+        if (!(error instanceof CounterAccountingError)) inflight.delete(key);
+        throw error;
+      });
+    flight = { work, controller, waiters: 0 };
+    inflight.set(key, flight);
+  }
+  const owned = flight;
+  owned.waiters++;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (--owned.waiters === 0) owned.controller.abort();
+  };
+  deps.signal?.addEventListener("abort", release, { once: true });
+  const started = Date.now();
+  return withDeadline(owned.work, deps.deadlineMs ?? ENSURE_DEADLINE_MS, `sessions.ensure(${idp})`)
+    .then(result => {
+      checkAbort(deps);
+      // Joining a healthy-cache ensure must not turn a forced refresh into a fake mint.
+      if (deps.forceRefresh && result.source === "cache") {
+        const remaining = (deps.deadlineMs ?? ENSURE_DEADLINE_MS) - (Date.now() - started);
+        if (remaining <= 0) throw new AuthError("TIMEOUT", "sessions.refresh exhausted its caller budget", { retryable: true });
+        return ensureSession(idp, store, { ...deps, deadlineMs: remaining });
+      }
+      return result;
+    })
+    .finally(() => { deps.signal?.removeEventListener("abort", release); release(); });
 }
