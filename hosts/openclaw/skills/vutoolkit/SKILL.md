@@ -7,7 +7,7 @@ license: MIT
 
 # vutoolkit
 
-Use vutoolkit for an authorized student's Vanderbilt authentication, academic record, GPA projections, degree and schedule planning, and Microsoft Graph access. Prefer its existing session and API operations over rebuilding login flows.
+Use vutoolkit for an authorized student's Vanderbilt authentication, academic record, GPA projections, degree and schedule planning, and Outlook inbox access. Prefer its existing session and API operations over rebuilding login flows.
 
 ## Runtime prerequisite
 
@@ -17,7 +17,7 @@ This skill supplies instructions, not the runtime or credentials. First check wh
 
 1. Use the current host's account and secret vault. Keep different people's accounts in separate host vaults and data directories. `setup.status` reports configuration/browser prerequisites, not live acceptance of a passkey. A structurally valid key may still be rejected by OneVU.
 2. For GPA planning, call `record.fetch`, then pass the returned transcript to `gpa.verify`. Only describe a projection as verified when the official posted totals match; the default synthetic fixture does not verify a real student's record. Pass that same transcript to `grades.whatif` with the requested hypothetical grades.
-3. For recent inbox conversations, use `outlook.inbox`. It verifies the mailbox identity and refreshes the Outlook web session as needed. Use `graph.call` for public Microsoft Graph operations when Entra grants Graph authorization. Use POST, PATCH, PUT, or DELETE only for actions authorized by the account holder.
+3. For recent inbox conversations, use `outlook.inbox`. It verifies the mailbox identity and refreshes the Outlook web session as needed.
 4. If authentication fails, report the typed error and the missing setup prerequisite. Do not claim a live check passed because a fixture or cached metadata call succeeded.
 5. For degree planning, start from `degree.audit` or `degree.graph`, retrieve official alternatives with `degree.options`, and use catalog metadata with `planner.graph`. Preserve unknown prerequisites and truncation warnings; never equate a ranked path with official eligibility.
 6. For scheduling, fetch live sections with `courses.sections`, then use `scheduler.solve`. Check TBA times, component compatibility, and term before using a result. `scheduler.cartPlan` only returns a diff; the YES extension applies user-selected cart changes, never enrollment.
@@ -25,18 +25,6 @@ This skill supplies instructions, not the runtime or credentials. First check wh
 8. Respect typed prerequisite errors. `PASSWORD_REQUIRED` means configure the named vault entry through a secure host UI or use `setup.prepare` for manual sign-in, then retry. `MFA_REQUIRED` means wait for the existing one-time approval, not generate repeated pushes. `BROWSER_UNAVAILABLE` means repair the selected compatible CDP browser/connection; never silently switch an explicit endpoint to another profile.
 9. For an asleep/unavailable account holder use `allowInteractiveVerification:false`. It reuses existing authentication without submitting a password or initiating phone verification. If no authenticated session is available, preserve progress and report the blocker; do not wake the user or call cookie-only access complete.
 10. A known-rejected toolkit key requires explicit recovery authorization and `recovery:true`; the rejected key is not retried and is preserved as `VANDERBILT_PASSKEY_PREVIOUS` only after a new credential is verified. A distinct pending credential blocks duplicate enrollment. `status:"partial"` is not full setup: check `microsoftSession` and repair that connection separately. Successful cached-session access alone does not independently test a passkey assertion.
-
-## Outlook email drafts and replies
-
-For a request to draft email in the connected Microsoft account, use `graph.call` to save an unsent Outlook draft, then verify it. Chat prose alone is not a saved draft. Follow the account holder's instructions for content, recipients, and sending; creating a draft does not authorize sending it.
-
-1. Check for a retained draft ID or an existing matching draft before creating another. For a new message, use `POST /me/messages` with the requested subject, body, and recipients; Graph saves it in Drafts by default.
-2. For a reply, retrieve the actual source message and use `POST /me/messages/{sourceId}/createReply`, or `createReplyAll` when reply-all is requested. URL-encode message IDs. A new message with a `Re:` subject is not a native reply. Preserve the source's threading and `replyTo` recipients; do not invent a source ID or silently broaden the recipient set.
-3. Use `PATCH /me/messages/{draftId}` to finish the created draft and add requested attachments through its attachment endpoint. Before replacing a reply body, retain any quoted context the user wants preserved.
-4. Read the saved message back with `GET /me/messages/{draftId}`. Verify `isDraft:true`, subject, To/Cc/Bcc recipients, full body, and requested attachments (read the attachment collection when needed). A successful create response alone is not completion. After an ambiguous write or timeout, reconcile the retained ID or search Drafts before retrying; do not create duplicate drafts.
-5. Return the verified draft ID and `webLink` when available, plus any unresolved requirement. Keep authorization or access blockers explicit. Do not call `sendMail`, `send`, `reply`, or `replyAll` to fulfill a draft-only request; these send immediately and require separate sending authorization.
-
-API references: [new draft](https://learn.microsoft.com/en-us/graph/api/user-post-messages?view=graph-rest-1.0), [reply draft](https://learn.microsoft.com/en-us/graph/api/message-createreply?view=graph-rest-1.0), [reply-all draft](https://learn.microsoft.com/en-us/graph/api/message-createreplyall?view=graph-rest-1.0), [update draft](https://learn.microsoft.com/en-us/graph/api/message-update?view=graph-rest-1.0).
 
 ## Boundaries
 
@@ -109,14 +97,6 @@ Pure GPA projection: apply hypothetical grades onto a transcript (replaces poste
 Arguments: `transcript`, `hypotheticals`.
 
 `vutoolkit grades.whatif --json '<arguments>'` prints a JSON result. MCP tool `grades.whatif` on server `vutoolkit` returns the same result as `structuredContent`.
-
-### graph.call
-
-Call the public Microsoft Graph API if Entra grants Graph authorization. For inbox reads with the Outlook web session, use outlook.inbox. For Graph, the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {"$top": 10, "$select": "subject,from"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.
-
-Arguments: `method`, `path`, `query`, `body`.
-
-`vutoolkit graph.call --json '<arguments>'` prints a JSON result. MCP tool `graph.call` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### outlook.inbox
 

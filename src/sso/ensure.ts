@@ -24,7 +24,7 @@ import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
-import { probeSession, type LivenessProbe } from "./liveness.js";
+import { probeVanderbilt, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
 
 export type Ceremony = typeof runSsoCeremony;
@@ -263,7 +263,7 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
     if (idp === "microsoft" && !deps.probe) return mint(idp, store, deps);
     const cookies: CookieRecord[] = store.cookies(idp);
     const probeStarted = Date.now();
-    const alive = await (deps.probe ?? probeSession)(idp, cookies);
+    const alive = deps.probe ? await deps.probe(idp, cookies) : await probeVanderbilt(cookies);
     tracer(deps.env ?? process.env, idp)(`probe ${alive ? "alive" : "dead"}`, probeStarted);
     if (alive) {
       if (!existing.healthy) await store.put({ ...existing, cookies, healthy: true });

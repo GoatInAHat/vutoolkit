@@ -14,7 +14,7 @@
           "openclaw"
         ],
         "default": "file",
-        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions and Graph tokens in the native vault; file preserves standalone 0600 storage."
+        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions in the native vault; file preserves standalone 0600 storage."
       }
     }
   },
@@ -31,7 +31,6 @@
       "vutoolkit_degree_options",
       "vutoolkit_gpa_verify",
       "vutoolkit_grades_whatif",
-      "vutoolkit_graph_call",
       "vutoolkit_outlook_inbox",
       "vutoolkit_planner_graph",
       "vutoolkit_professors_search",

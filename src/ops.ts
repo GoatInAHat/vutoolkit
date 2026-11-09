@@ -3,7 +3,7 @@
  * Host-provided capabilities are declared with `requires`; toolfactory decides per surface
  * whether each operation is native, bridged, degraded, or excluded. Anything touching session
  * values or passkey material goes through the vault contract (src/vault/index.ts) and is
- * honestly gated until their wiring lands. Session and Graph operations use the configured
+ * honestly gated until their wiring lands. Session operations use the configured
  * credential backend; sessions.refresh re-mints through the same store plus the
  * CDP ceremony (OneVU passkey or Microsoft Entra carry).
  */
@@ -19,9 +19,6 @@ import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
 import { inboxConversation, readOutlookInbox } from "./outlook/inbox.js";
 import { ensureBrowser, resolveBrowser } from "./sso/browser-config.js";
 import { AuthError } from "./sso/errors.js";
-import { probeSession } from "./sso/liveness.js";
-import { graphCall } from "./graph/client.js";
-import { ensureGraphToken, graphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
 import { credentialEnv } from "./vault/credential-store.js";
@@ -46,19 +43,6 @@ const transcriptSchema = z.object({
 type TranscriptArgs = z.infer<typeof transcriptSchema>;
 
 const vaultStore = (ctx: Context) => sessionStore(ctx.dataDir, credentialEnv(ctx.config));
-
-/**
- * Optional login_hint for the silent Graph authorize: env first, then the vault. Absence is fine -
- * the vaulted session's cookies carry the identity (live-proven without a hint 2026-09-21).
- */
-const bestEffortLoginHint = (): string | undefined => {
-  if (process.env.VUTOOLKIT_VU_EMAIL) return process.env.VUTOOLKIT_VU_EMAIL;
-  try {
-    return defaultSecretsRead("VANDERBILT_EMAIL");
-  } catch {
-    return undefined;
-  }
-};
 
 export const operations = [
   ...setupOperations,
@@ -211,29 +195,6 @@ export const operations = [
       }
       if (!inbox) throw new AuthError("MICROSOFT_FLOW_CHANGED", "Outlook did not return an authenticated inbox response.", { retryable: true });
       return { conversations: inbox.slice(0, limit) };
-    },
-  }),
-  operation({
-    name: "graph.call",
-    description:
-      "Call the public Microsoft Graph API if Entra grants Graph authorization. For inbox reads with the Outlook web session, use outlook.inbox. For Graph, the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
-    input: z.object({
-      method: z.enum(["GET", "POST", "PATCH", "PUT", "DELETE"]).default("GET"),
-      path: z.string().regex(/^\/(?!\/)/, "a relative Graph v1.0 path starting with a single /"),
-      query: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
-      body: z.unknown().optional(),
-    }),
-    output: z.object({ status: z.number(), data: z.unknown() }),
-    requires: ["net", "secret"],
-    handler: async ({ method, path, query, body }, ctx) => {
-      const store = vaultStore(ctx);
-      await ensureSession("microsoft", store, { probe: probeSession });
-      const cache = graphTokenCache(ctx.dataDir, credentialEnv(ctx.config));
-      const getToken = (opts: { force?: boolean }): Promise<string> =>
-        ensureGraphToken(store.cookies("microsoft"), cache, { ...opts, loginHint: bestEffortLoginHint() }).then(
-          (token) => token.accessToken,
-        );
-      return graphCall(method, path, query, body, getToken);
     },
   }),
   operation({

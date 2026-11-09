@@ -37,7 +37,7 @@ export const nativeSecrets: NativeSecrets = {
   },
 };
 
-export type CredentialKind = "sessions_vanderbilt" | "sessions_microsoft" | "graph";
+export type CredentialKind = "sessions_vanderbilt" | "sessions_microsoft";
 
 export function credentialSecretName(dataDir: string, kind: CredentialKind): string {
   const scope = createHash("sha256").update(resolve(dataDir)).digest("hex").slice(0, 24).toUpperCase();
@@ -73,7 +73,7 @@ export function credentialStorage(
   if (mode === "file") return undefined;
   if (mode !== "openclaw") throw new VaultNotWiredError("VUTOOLKIT_CREDENTIAL_STORE must be openclaw or file.");
   const storage = new NativeCredentialStorage(credentialSecretName(dataDir, kind), secrets);
-  const legacy = join(dataDir, kind.startsWith("sessions_") ? "sessions.vault.json" : "graph-token.json");
+  const legacy = join(dataDir, "sessions.vault.json");
   return {
     location: storage.location,
     read() {
@@ -93,36 +93,28 @@ export function credentialStorage(
 /** Call with credential writers quiesced. Originals remain until the integrator verifies cutover. */
 export function migrateCredentialCaches(dataDir: string, secrets: NativeSecrets = nativeSecrets) {
   const migrated: Array<{ kind: CredentialKind; secretName: string; verified: true }> = [];
-  for (const sourceKind of ["sessions", "graph"] as const) {
-    const path = join(dataDir, sourceKind === "sessions" ? "sessions.vault.json" : "graph-token.json");
-    if (!existsSync(path)) continue;
-    const raw = readFileSync(path, "utf8").trim();
-    let parsed: Record<string, unknown>;
-    try { parsed = JSON.parse(raw); } catch {
-      throw new VaultNotWiredError("Legacy credential cache is invalid JSON; original preserved.");
-    }
-    const valid = parsed && typeof parsed === "object" && (sourceKind === "sessions"
-      ? parsed.version === 1 && parsed.rows !== null && typeof parsed.rows === "object" && !Array.isArray(parsed.rows)
-      : typeof parsed.accessToken === "string" && parsed.accessToken.length > 0 &&
-        Number.isFinite(parsed.acquiredAtMs) && Number.isFinite(parsed.expiresAtMs));
-    if (!valid) throw new VaultNotWiredError("Legacy credential cache has an invalid shape; original preserved.");
-    const entries: Array<[CredentialKind, string]> = sourceKind === "sessions"
-      ? (["vanderbilt", "microsoft"] as const).map((idp) => [
-          `sessions_${idp}` as CredentialKind,
-          JSON.stringify((parsed.rows as Record<string, unknown>)[idp] ?? null),
-        ])
-      : [["graph", raw]];
-    for (const [kind, value] of entries) {
-      const storage = new NativeCredentialStorage(credentialSecretName(dataDir, kind), secrets);
-      const existing = storage.read();
-      if (existing !== null && existing !== value)
-        throw new VaultNotWiredError("Native vault entry differs from the legacy cache; reconcile without overwriting either.");
-      storage.write(value);
-      migrated.push({ kind, secretName: storage.name, verified: true });
-    }
-    if (readFileSync(path, "utf8").trim() !== raw)
-      throw new VaultNotWiredError("Legacy credential cache changed during migration; stop writers and reconcile before cutover.");
+  const path = join(dataDir, "sessions.vault.json");
+  if (!existsSync(path)) return { migrated, originalsPreserved: true as const };
+  const raw = readFileSync(path, "utf8").trim();
+  let parsed: Record<string, unknown>;
+  try { parsed = JSON.parse(raw); } catch {
+    throw new VaultNotWiredError("Legacy credential cache is invalid JSON; original preserved.");
   }
+  if (!parsed || parsed.version !== 1 || !parsed.rows || typeof parsed.rows !== "object" || Array.isArray(parsed.rows))
+    throw new VaultNotWiredError("Legacy credential cache has an invalid shape; original preserved.");
+  const entries: Array<[CredentialKind, string]> = (["vanderbilt", "microsoft"] as const).map(idp => [
+    `sessions_${idp}`, JSON.stringify((parsed.rows as Record<string, unknown>)[idp] ?? null),
+  ]);
+  for (const [kind, value] of entries) {
+    const storage = new NativeCredentialStorage(credentialSecretName(dataDir, kind), secrets);
+    const existing = storage.read();
+    if (existing !== null && existing !== value)
+      throw new VaultNotWiredError("Native vault entry differs from the legacy cache; reconcile without overwriting either.");
+    storage.write(value);
+    migrated.push({ kind, secretName: storage.name, verified: true });
+  }
+  if (readFileSync(path, "utf8").trim() !== raw)
+    throw new VaultNotWiredError("Legacy credential cache changed during migration; stop writers and reconcile before cutover.");
   return { migrated, originalsPreserved: true as const };
 }
 

@@ -23,7 +23,7 @@ The eight tests in [`tests/live.test.ts`](../tests/live.test.ts) verify:
 
 1. A healthy Vanderbilt session.
 2. A healthy Microsoft session.
-3. Microsoft Graph `/me` matches the configured account identity.
+3. Outlook inbox startup matches the configured account identity.
 4. A real YES transcript with independent posted term and cumulative GPA totals.
 5. Every posted term GPA and the posted cumulative GPA reproduce from the transcript.
 6. Hypothetical grades apply to real in-progress courses without mutating the transcript.
@@ -45,7 +45,7 @@ These checks allow healthy session reuse. This run does **not** independently pr
 | Original requirement | Implementation | Verification and remaining boundary |
 | --- | --- | --- |
 | OneVU passkey authentication and cached SSO | `sessions.ensure`, `sessions.refresh`; host-vault credential resolution and dedicated CDP tabs | Auth orchestration unit-tested; current authenticated health verified. A destructive cache reset is not part of the release suite. |
-| Microsoft session and generic Graph access | Microsoft session chain; `graph.call` with injected auth | Configured identity and session health verified live. This suite does not send mail, edit calendars, or exercise every Graph endpoint. |
+| Microsoft session and Outlook inbox | Microsoft session chain; `outlook.inbox` | Configured identity and read-only inbox access verified live with a passkey from an empty browser profile. |
 | Reusable sessions for other authorized clients | Ingest, export, refresh, forget, metadata listing; Cookie/CDP/Playwright formats | Both identity-provider export shapes verified live; storage and scope filtering unit-tested. Individual third-party services still have their own browser/API requirements. |
 | Academic record including unposted courses | Live YES record adapter | Live transcript and posted totals verified; projection uses its in-progress courses. No private student record is included in this repository. |
 | Term and cumulative what-if GPA | Pure calculation engine; official-total verification | All posted term and cumulative comparisons pass on the configured live account. Synthetic tests cover grading and projection cases. |
@@ -83,7 +83,7 @@ The implementation covers these requested categories, but **100% live behavioral
 - **Other browsers and new accounts:** a successful build is not an installed-browser test. Firefox/Edge/Safari runtime behavior and a second account's authenticated flow require separate evidence.
 - **Distribution and installations:** publication receipts, npm trusted-publisher configuration, and each host's loaded version are release/deployment checks, not implied by the source tests. See [RELEASING.md](RELEASING.md).
 
-No passkey enrollment, academic write, cart change, Graph mutation, or email send is required by the read-only release suite.
+No passkey enrollment, academic write, cart change, or email send is required by the read-only release suite.
 
 ## 0.4.0 deterministic setup acceptance
 

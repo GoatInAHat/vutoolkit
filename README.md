@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [Releases](https://github.com/GoatInAHat/vutoolkit/releases) · [Changelog](CHANGELOG.md) · [Original specification](docs/SPEC.md) · [Contributing](CONTRIBUTING.md)
 
-vutoolkit connects an authorized student's agent to Vanderbilt OneVU, YES, and Microsoft Graph. A shared operation layer powers the CLI, MCP server, OpenClaw plugin, and web app through [Tool Factory](https://github.com/GoatInAHat/toolfactory).
+vutoolkit connects an authorized student's agent to Vanderbilt OneVU, YES, and Outlook on the web. A shared operation layer powers the CLI, MCP server, OpenClaw plugin, and web app through [Tool Factory](https://github.com/GoatInAHat/toolfactory).
 
 This is an independent, community-developed project, not an official Vanderbilt University service.
 
@@ -19,7 +19,6 @@ This is an independent, community-developed project, not an official Vanderbilt 
 | Academic record | `record.fetch` | Historical grades and current courses from YES |
 | GPA planning | `gpa.verify`, `grades.whatif` | Compare calculated GPA with the official record before projecting hypothetical grades |
 | Outlook inbox | `outlook.inbox` | Recent conversation summaries through the signed-in Outlook web session |
-| Microsoft Graph | `graph.call` | Public API resources when Entra grants a Graph access token |
 | Degree and course data | `degree.audit`, `degree.graph`, `degree.options`, `courses.*` | Official YES requirements, course alternatives, prerequisite descriptions, and section metadata |
 | Prerequisite planning | `planner.graph` | Directed AND/OR graph, completed/planned courses, weighted alternatives, explicit unknowns |
 | Schedule planning | `scheduler.solve`, `scheduler.cartPlan` | Conflict-free combinations, lecture/lab components, free-time preferences, and cart-only diffs |
@@ -67,7 +66,7 @@ Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
 
-For a passkey-backed mailbox read, call `outlook.inbox`. It reads recent conversation summaries from Outlook on the web and checks the configured mailbox identity. Microsoft session readiness uses Outlook’s own authenticated response. Public Microsoft Graph authorization is separate.
+For a passkey-backed mailbox read, call `outlook.inbox`. It reads recent conversation summaries from Outlook on the web and checks the configured mailbox identity. Microsoft session readiness uses Outlook’s own authenticated response.
 
 ### Credential cache storage
 
@@ -78,7 +77,7 @@ calls on that host must also set `VUTOOLKIT_CREDENTIAL_STORE=openclaw` and the s
 change made by importing the library. Unknown modes and unavailable native vaults fail closed,
 without falling back to plaintext.
 
-The native backend stores session cookies and Graph tokens in readable `env`-kind JSON
+The native backend stores session cookies in readable `env`-kind JSON
 envelopes like the existing passkey adapter. Values travel over stdin, never command arguments,
 and every write is verified by exact readback. Entry names are scoped by data-directory path.
 Each IdP has its own entry, so an update or forget for Microsoft cannot overwrite a concurrent
@@ -86,7 +85,7 @@ Vanderbilt update. Same-IdP refreshes remain last-writer-wins, as in the previou
 quiesce credential writers during migration. Never print a bare vault listing: readable entries
 contain credentials. The native vault's 64 KiB per-entry limit is enforced before writes.
 
-An existing `sessions.vault.json` or `graph-token.json` needs a deliberate cutover. Stop or
+An existing `sessions.vault.json` needs a deliberate cutover. Stop or
 finish toolkit credential writers, then invoke the exported
 `migrateCredentialCaches(dataDir)` from `dist/vault/credential-store.js` inside the trusted host
 process. It splits the legacy session envelope into per-IdP entries, verifies vault readback,
@@ -109,9 +108,9 @@ On current OpenClaw, plugin install/link applies the plugin without a gateway re
 
 ## Data and permissions
 
-Academic-record reads and GPA calculations do not change enrollment. The browser extension changes the YES **cart only** when you choose its cart controls; it never submits enrollment. `setup.run` and `setup.enroll` add an account credential only with authorization; explicit recovery preserves the previous key before promoting its replacement. `graph.call` is a general Microsoft Graph client: **POST, PATCH, PUT, and DELETE can change the real account** and should only be used when the account holder requests those actions.
+Academic-record reads and GPA calculations do not change enrollment. The browser extension changes the YES **cart only** when you choose its cart controls; it never submits enrollment. `setup.run` and `setup.enroll` add an account credential only with authorization; explicit recovery preserves the previous key before promoting its replacement.
 
-Passkey material is resolved from the host's secret store. Session cookies and Graph tokens use the configured native-vault or permission-restricted-file backend described above. Most session operations return metadata, but `sessions.open` intentionally returns usable authentication material; send that payload only to the authorized client and keep it out of logs and public artifacts. See [Security](SECURITY.md).
+Passkey material is resolved from the host's secret store. Session cookies use the configured native-vault or permission-restricted-file backend described above. Most session operations return metadata, but `sessions.open` intentionally returns usable authentication material; send that payload only to the authorized client and keep it out of logs and public artifacts. See [Security](SECURITY.md).
 
 ## Development and verification
 
@@ -129,7 +128,7 @@ On an account-configured host, run `npm run test:live` to opt into the Tool Fact
 | Path | Purpose |
 | --- | --- |
 | `src/ops.ts` | Agent-facing operation definitions |
-| `src/sso/`, `src/vault/`, `src/graph/` | Authentication, session storage, and Graph access |
+| `src/sso/`, `src/vault/`, `src/outlook/` | Authentication, session storage, and Outlook inbox access |
 | `src/yes/`, `src/gpa/` | Academic-record parsing and GPA calculations |
 | `web/`, `hosts/` | Web app and host integrations |
 | `dev.toolfactory/tool.json` | Tool Factory surface and test configuration |

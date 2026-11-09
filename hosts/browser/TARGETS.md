@@ -17,7 +17,6 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 | `degree.options` | native | native | native |
 | `gpa.verify` | native | native | native |
 | `grades.whatif` | native | native | native |
-| `graph.call` | native | native | native |
 | `outlook.inbox` | native | native | native |
 | `planner.graph` | native | native | native |
 | `professors.search` | native | native | native |

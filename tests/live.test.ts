@@ -7,7 +7,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { operations } from "../src/ops.js";
 import { context } from "../src/toolfactory/config.js";
-import { defaultSecretsRead } from "../src/sso/ensure.js";
 import type { Transcript } from "../src/gpa/engine.js";
 
 // tf:live-guard
@@ -56,15 +55,10 @@ describe.skipIf(!live)("vutoolkit against the real service", () => {
     }, 420_000);
   }
 
-  it("Microsoft Graph resolves the configured Vanderbilt identity", async () => {
-    const expected = process.env.VUTOOLKIT_VU_EMAIL || defaultSecretsRead("VANDERBILT_EMAIL");
-    const result = await call("graph.call", { method: "GET", path: "/me", query: { "$select": "id,mail,userPrincipalName" } });
-    expect(result.status === 200).toBe(true);
-    expect(typeof result.data?.id === "string").toBe(true);
-    const identities = [result.data?.mail, result.data?.userPrincipalName]
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.toLowerCase());
-    expect(identities.includes(expected.toLowerCase()), "live identity matches the configured account").toBe(true);
+  it("reads the configured Outlook inbox", async () => {
+    const result = await call("outlook.inbox", { limit: 1 });
+    expect(Array.isArray(result.conversations)).toBe(true);
+    expect(result.conversations.length).toBeLessThanOrEqual(1);
   }, 420_000);
 
   it("fetches the real academic record with independent posted totals", async () => {

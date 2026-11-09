@@ -13,32 +13,13 @@ import type { CookieRecord } from "../vault/file-store.js";
 import type { Idp } from "../vault/index.js";
 import { CookieJar, jarFetch } from "../yes/jar.js";
 import { discoverRecordFragmentUrl } from "../yes/aai-record.js";
-import { ensureGraphToken, GraphTokenCache } from "../graph/token.js";
 
 /** The aai shell: a live Vanderbilt session lands here with its academic-record hx-get URL. */
 const AAI_SHELL_URL = "https://aai.app.vanderbilt.edu/aai";
-/** Probe ids are unique so parallel session checks never share an ephemeral token flight. */
-let microsoftProbeSequence = 0;
-
-/** The liveness check must not persist an OAuth token; its cache exists only in memory. */
-class MicrosoftProbeTokenCache extends GraphTokenCache {
-  constructor() {
-    super(`memory:vutoolkit-microsoft-probe-${++microsoftProbeSequence}`);
-  }
-
-  override read() {
-    return null;
-  }
-
-  override put(): void {
-    // Liveness only needs the token for this one proof request.
-  }
-}
 const BROWSER_UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 export type LivenessProbe = (idp: Idp, cookies: CookieRecord[], fetchImpl?: typeof fetch) => Promise<boolean>;
-
 /**
  * Alive iff the danced aai shell returns with its academic-record hx-get URL present. A dead
  * session is redirected to the OneVU sign-in widget (onevu authorize), whose HTML carries no
@@ -59,27 +40,3 @@ export async function probeVanderbilt(cookies: CookieRecord[], fetchImpl?: typeo
     return false;
   }
 }
-
-/**
- * Alive iff the stored cookies can mint a Graph token and call the read-only /me endpoint.
- * Outlook's auth=2 shell check stopped working when Microsoft changed its redirect chain; use
- * the same supported silent Graph flow as graph.call so session health matches actual toolkit use.
- * The short-lived proof token is deliberately kept only in memory.
- */
-export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof fetch): Promise<boolean> {
-  if (cookies.length === 0) return false;
-  try {
-    const token = await ensureGraphToken(cookies, new MicrosoftProbeTokenCache(), { fetchImpl });
-    const res = await (fetchImpl ?? fetch)("https://graph.microsoft.com/v1.0/me?$select=id", {
-      headers: { authorization: `Bearer ${token.accessToken}` },
-      signal: AbortSignal.timeout(20_000),
-    });
-    return res.status === 200;
-  } catch {
-    return false;
-  }
-}
-
-/** Dispatch to the IdP's probe. Default liveness check used by sessions.ensure. */
-export const probeSession: LivenessProbe = (idp, cookies, fetchImpl) =>
-  idp === "microsoft" ? probeMicrosoft(cookies, fetchImpl) : probeVanderbilt(cookies, fetchImpl);
