@@ -1,6 +1,6 @@
 # vutoolkit
 
-vutoolkit gives an authorized student's AI agents access to Vanderbilt OneVU, YES academic records, GPA planning, and Microsoft Graph. `src/ops.ts` defines the public operations; authentication, parsing, and calculation logic lives in the adjacent domain modules. Resolve credentials through the host vault, keep each person's sessions isolated, and use synthetic or redacted fixtures. Academic tooling is read-only; Microsoft Graph writes require the account holder's authorization. Validate GPA results against the official live transcript before trusting projections, and distinguish implemented features from generated surfaces and unfinished work in `docs/SPEC.md`.
+vutoolkit gives an authorized student's AI agents access to Vanderbilt OneVU, YES academic records, GPA planning, and Outlook inbox summaries. `src/ops.ts` defines the public operations; authentication, parsing, and calculation logic lives in the adjacent domain modules. Resolve credentials through the host vault, keep each person's sessions isolated, and use synthetic or redacted fixtures. Academic and Outlook inbox operations are read-only. Validate GPA results against the official live transcript before trusting projections, and distinguish implemented features from generated surfaces and unfinished work in `docs/SPEC.md`.
 
 <!-- tf:agents -->
 ## Commands

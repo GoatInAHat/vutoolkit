@@ -54,7 +54,7 @@
       "state": "generated"
     },
     ".env.example": {
-      "sha256": "ed85f3a015eb47b2cec43d6788a2db1fc609dfa1f054112bc8cae144649de424",
+      "sha256": "c9a879c0a79c832dc79e14f41dface0fccbeec7239ea8e01111d239ef4471705",
       "state": "generated"
     },
     ".gitattributes": {
@@ -102,11 +102,11 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "5f5aa6f677d4d35305aeccd150960136c0342a88e09bfb9aaee6bde33f4b4fbd",
+      "sha256": "c7412596de14508f59446a49d9ee9e1b88e74517c2e7dbb2709c93655970baec",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
-      "sha256": "6d95cf87ad0fe37a7200de69040ac990c35926dae889fcdab5475b04d355d3b9",
+      "sha256": "12edc0a8bc419240fbcaaa126535662fee8c7e6d59288f3cc5ac396b99b80881",
       "state": "generated"
     },
     "dev.toolfactory/inspector.json": {
@@ -199,7 +199,7 @@
       "state": "generated"
     },
     "hosts/browser/TARGETS.md": {
-      "sha256": "e7d90f97ca58c6a98f20beec0cb29df72e31eeb7178f291d6bb1fc1d0cbe2f9b",
+      "sha256": "9978bd2a47f9808c586ac51dcfd16fb848fef4f034ac74073af57706641ccd17",
       "state": "generated"
     },
     "hosts/browser/tests/background.test.ts": {
@@ -249,7 +249,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "e66446092f816d8cffd1213bbdf286e75fd3fcac5db2ad24a7acd5dd81b9c411",
+      "sha256": "c84c6daef708d5b638a8c4f1d62002e2752cc6b13b28423d96679e421dbccf16",
       "state": "generated",
       "keys": [
         "id",
@@ -300,19 +300,19 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "10ecde42b77e31d1a38b67d0b836bdbafb529da787e654034539b7bddadefc98",
+      "sha256": "1b136a317a7fe8d84c690b7fc318262fa33ae635ba4681c66058f77c693ff9a4",
       "state": "generated"
     },
     "hosts/openclaw/skills/vutoolkit/SKILL.md": {
-      "sha256": "6dc2e4e0fb157d939b77c279eb2f1a7c729df0050cd1bbeb38a9c5341feceb16",
+      "sha256": "b07c8a985f616fffe6f226f239e124482da0701b3c1d6656cf25dcf5243bbb85",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
-      "sha256": "eb0014663dceefaaeacfb97d371577855a2e6661a871e53331957f9119b8774e",
+      "sha256": "5a22a92565c6591dbfe3c338ed0dfbc113a6bec9dbeb1a8b9f0326380249e970",
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "bc2ba03e563b8176e27089c0e0d7f346c4711d651b9e017a910ed2d218226224",
+      "sha256": "fc2c6cb309a64f6f2c37aa1699cf7cebede237354f231d5aa88f4cc87df60b9d",
       "state": "generated",
       "regions": [
         {
@@ -366,7 +366,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "8adf38115f2035a7c801f0a89fa7c76630a368cd2514b0fd869815c1fd38ced4",
+      "sha256": "3769ce37d051882f5f010f9218c94e1bb0a9eabe91fe28c3528fe9cfbe7fac15",
       "state": "generated",
       "regions": [
         {
@@ -452,7 +452,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "837516c07974a8890f4d76d48839a74e9967f56527588096be523528570bfa5c",
+      "sha256": "acc41eba451bd9740e2fa4f9fb907d27be829656717cde9045022e6b022368fc",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

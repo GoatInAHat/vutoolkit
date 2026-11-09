@@ -16,7 +16,7 @@
 import type { CookieRecord } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, harvestCookies, withCdpTab } from "./cdp-driver.js";
 import { AuthError } from "./errors.js";
-import { probeMicrosoft } from "./liveness.js";
+import { OUTLOOK_INBOX, watchOutlookInbox } from "../outlook/inbox.js";
 
 /**
  * Raised when minting is impossible without a human credential decision (a Microsoft password
@@ -39,7 +39,7 @@ export interface MicrosoftCeremonyOptions {
   /** Whole-ceremony deadline; defaults to 120 seconds. */
   timeoutMs?: number;
   /**
-   * Server-side proof that harvested cookies hold a live session; defaults to the liveness probe.
+   * Server-side proof that harvested cookies hold a live session; defaults to Outlook's authenticated inbox startup response.
    * An Outlook URL alone is not proof: from an empty profile the Outlook shell loads at
    * outlook.office.com/mail/ for seconds before its script redirects to sign-in.
    */
@@ -187,11 +187,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): Promise<MintedMicrosoftSession> {
   const stepMs = opts.stepMs ?? 1500;
   const timeoutMs = opts.timeoutMs ?? 120_000;
-  const startUrl = opts.startUrl ?? "https://outlook.office.com/";
-  return withCdpTab(opts.cdpUrl, startUrl, async (tab) => {
+  const startUrl = opts.startUrl ?? OUTLOOK_INBOX;
+  return withCdpTab(opts.cdpUrl, opts.verify ? startUrl : "about:blank", async (tab) => {
     const { evaluate, send } = tab;
+    const inbox = opts.verify ? undefined : await watchOutlookInbox(tab, opts.email);
+    if (inbox) await send("Page.navigate", { url: startUrl });
     const deadline = Date.now() + timeoutMs;
-    const verify = opts.verify ?? ((cookies: CookieRecord[]) => probeMicrosoft(cookies));
     let identifierFills = 0;
     let kmsiClicks = 0;
     let pickerClicks = 0;
@@ -210,8 +211,12 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
       traceProbe(probe, state);
       oktaSightings = state.kind === "okta" ? oktaSightings + 1 : 0;
       if (state.kind === "success") {
+        if (inbox && !inbox()) {
+          unverifiedLandings++;
+          continue;
+        }
         const cookies = await harvestCookies(send);
-        if (!(await verify(cookies))) {
+        if (opts.verify && !(await opts.verify(cookies))) {
           unverifiedLandings++;
           continue; // the Outlook shell before its sign-in redirect; keep driving
         }

@@ -761,59 +761,65 @@
       }
     },
     {
-      "name": "graph.call",
-      "description": "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
+      "name": "outlook.inbox",
+      "description": "Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "method": {
-            "default": "GET",
-            "type": "string",
-            "enum": [
-              "GET",
-              "POST",
-              "PATCH",
-              "PUT",
-              "DELETE"
-            ]
-          },
-          "path": {
-            "type": "string",
-            "pattern": "^\\/(?!\\/)"
-          },
-          "query": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": [
-                "string",
-                "number"
-              ]
-            }
-          },
-          "body": {}
+          "limit": {
+            "default": 10,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          }
         },
-        "required": [
-          "path"
-        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "status": {
-            "type": "number"
-          },
-          "data": {}
+          "conversations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subject": {
+                  "type": "string"
+                },
+                "sender": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "receivedAt": {
+                  "type": "string"
+                },
+                "unreadCount": {
+                  "type": "number"
+                },
+                "messageCount": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
         },
         "required": [
-          "status",
-          "data"
+          "conversations"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
       },
       "_meta": {
         "dev.toolfactory": {
