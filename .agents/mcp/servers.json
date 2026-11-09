@@ -26,5 +26,35 @@
     "args": [
       "@playwright/mcp@latest"
     ]
+  },
+  "gsd-workflow": {
+    "command": "/home/openclaw/.openclaw/tools/node-v24.19.0/bin/node",
+    "args": [
+      "/home/openclaw/.openclaw/projects/gsd-pi/packages/mcp-server/dist/cli.js"
+    ],
+    "cwd": "/home/openclaw/.openclaw/projects/vutoolkit",
+    "env": {
+      "GSD_CLI_PATH": "/home/openclaw/.openclaw/projects/gsd-pi/dist/bootstrap.js",
+      "GSD_BIN_PATH": "/home/openclaw/.openclaw/projects/gsd-pi/dist/bootstrap.js",
+      "GSD_WORKFLOW_EXECUTORS_MODULE": "/home/openclaw/.gsd/agent/extensions/gsd/tools/workflow-tool-executors.js",
+      "GSD_WORKFLOW_WRITE_GATE_MODULE": "/home/openclaw/.gsd/agent/extensions/gsd/bootstrap/write-gate.js",
+      "GSD_PERSIST_WRITE_GATE_STATE": "1",
+      "GSD_WORKFLOW_PROJECT_ROOT": "/home/openclaw/.openclaw/projects/vutoolkit"
+    }
+  },
+  "gsd-browser": {
+    "command": "gsd-browser",
+    "args": [
+      "mcp",
+      "--session",
+      "gsd-vutoolkit-72ed6e73",
+      "--identity-scope",
+      "project",
+      "--identity-key",
+      "gsd-vutoolkit-72ed6e73",
+      "--identity-project",
+      "gsd-vutoolkit-72ed6e73"
+    ],
+    "cwd": "/home/openclaw/.openclaw/projects/vutoolkit"
   }
 }

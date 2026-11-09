@@ -28,6 +28,9 @@
     },
     "additionalProperties": false
   },
+  "openclaw": {
+    "devDependencies": { "openclaw": "2026.10.10-beta.5" }
+  },
   "tests": {
     "examples": {},
     "live": {

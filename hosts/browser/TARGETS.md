@@ -9,6 +9,8 @@ every per-browser manifest difference — MV2 against MV3, `background.scripts` 
 
 | Operation | Chromium (chrome, edge) | Firefox | Safari |
 |---|---|---|---|
+| `brightspace.api` | native | native | native |
+| `brightspace.fetch` | native | native | native |
 | `courses.detail` | native | native | native |
 | `courses.search` | native | native | native |
 | `courses.sections` | native | native | native |

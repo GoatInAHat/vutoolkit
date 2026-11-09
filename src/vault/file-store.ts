@@ -203,12 +203,12 @@ class NativeSessionStore extends FileSessionStore {
 
   override async put(session: StoredSession & { cookies?: CookieRecord[] }): Promise<void> {
     this.row(session.idp);
-    this.stores[session.idp].write(JSON.stringify({ ...session, cookies: session.cookies ?? [] }));
+    await this.stores[session.idp].write(JSON.stringify({ ...session, cookies: session.cookies ?? [] }));
   }
 
   override async forget(idp: Idp): Promise<void> {
     this.row(idp);
-    this.stores[idp].write("null");
+    await this.stores[idp].write("null");
   }
 
   override cookies(idp: Idp): CookieRecord[] {

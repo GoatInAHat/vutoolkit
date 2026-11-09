@@ -62,6 +62,18 @@ describe("OneVU setup", () => {
     expect(() => configureIdentity({ email: "different@vanderbilt.edu" }, existing.deps)).toThrow(/existing passkey/i);
     expect(existing.write).not.toHaveBeenCalled();
   });
+
+  it("rejects identity configuration when the vault readback does not confirm the write", () => {
+    const h = harness({ corruptReadback: true });
+    expect(() => configureIdentity({ email: "synthetic@vanderbilt.edu" }, h.deps)).toThrow(/VAULT_VERIFY_FAILED/);
+  });
+
+  it("confirms the configured email was genuinely written when the vault readback matches", () => {
+    const h = harness();
+    const result = configureIdentity({ email: "synthetic@vanderbilt.edu" }, h.deps);
+    expect(result.identityConfigured).toBe(true);
+    expect(h.vault.get("VANDERBILT_EMAIL")).toBe("synthetic@vanderbilt.edu");
+  });
   it("validates existing material and reports metadata only", async () => {
     const h = harness({ existing: JSON.stringify(credential) });
     const result = await setupStatus(h.deps);
@@ -88,6 +100,20 @@ describe("OneVU setup", () => {
     expect(h.write).not.toHaveBeenCalled();
     expect(h.calls).toContain("WebAuthn.removeVirtualAuthenticator");
     expect(h.evaluate.mock.calls.some(([expression]) => expression.includes("button.click()"))).toBe(false);
+  });
+
+  it("directs an existing-key holder to sign in when the page is not authenticated", async () => {
+    const h = harness({ existing: JSON.stringify(credential), signedIn: false });
+    const prepared = await prepareSetup({ keepTab: false }, h.deps);
+    expect(prepared.status).toBe("sign-in-required");
+    expect(prepared.existingPasskeyPreserved).toBe(true);
+    // The signed-out branch must still hand the holder the Control-UI sign-in path, not a
+    // message that only makes sense once the page is already authenticated.
+    expect(prepared.nextStep).toMatch(/Control UI.*Browser panel.*openclaw profile/i);
+    expect(prepared.nextStep).toMatch(/passkey is unchanged/i);
+    expect(h.write).not.toHaveBeenCalled();
+    expect(h.calls).toContain("WebAuthn.addCredential");
+    expect(h.calls).toContain("WebAuthn.removeVirtualAuthenticator");
   });
 
   it("requires explicit confirmation and refuses to replace any existing entry", async () => {

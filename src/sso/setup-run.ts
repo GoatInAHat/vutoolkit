@@ -1,9 +1,10 @@
+import { checkAuthAbort } from "./budget.js";
 /** Deterministic first-time/recovery setup. Tool arguments never contain credentials. */
-import { sessionStore, harvestToStoredSession } from "../vault/file-store.js";
+import { sessionStore } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, withCdpTab, type CdpTab } from "./cdp-driver.js";
-import { runSsoCeremony, type VaultPasskey } from "./ceremony.js";
+import { type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, ensureSession, parseVaultPasskey } from "./ensure.js";
-import { advancePasskeyCounter, enrollSetup, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
+import { enrollSetup, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { AuthError } from "./errors.js";
 
@@ -86,6 +87,7 @@ async function driveSignIn(tab: CdpTab, email: string, options: Required<RunOpti
   const startedAt = (deps.now ?? Date.now)();
   const wait = deps.wait ?? sleep;
   while ((deps.now ?? Date.now)() < end) {
+    checkAuthAbort();
     const page = await tab.evaluate(LOGIN_PROBE).catch(() => null) as LoginPage | null;
     if (!page) { await wait(1000); continue; }
     if (page.security) return;
@@ -177,12 +179,12 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
     env: { ...env, VUTOOLKIT_VU_EMAIL: email, ...(selectedCdpUrl ? { VUTOOLKIT_CDP_URL: selectedCdpUrl } : {}) },
   }));
   const verifyPasskey = deps.verifyPasskey ?? (async (passkey: VaultPasskey, cdpUrl: string, identityEmail: string, expectedRaw: string) => {
-    const minted = await runSsoCeremony({ cdpUrl, email: identityEmail, passkey,
-      requireAssertion: true, timeoutMs: options.timeoutSeconds * 1000 });
-    if (!minted.passkeyVerified || !minted.assertedSignCount) return false;
-    advancePasskeyCounter(expectedRaw, minted.assertedSignCount, deps);
-    await store.put(harvestToStoredSession("vanderbilt", minted.cookies, minted.acquiredAt));
-    return true;
+    checkAuthAbort();
+    const result = await ensureSession("vanderbilt", store, {
+      forceRefresh: true,
+      env: { ...env, VUTOOLKIT_VU_EMAIL: identityEmail, VUTOOLKIT_CDP_URL: cdpUrl },
+    });
+    return result.passkeyVerified === true;
   });
   if (existing && !options.recovery) {
     const selection = deps.browserReady

@@ -10,6 +10,7 @@
 4. Build packages with `npx toolfactory package`. Inspect the npm and OpenClaw tarballs, verify built web assets are present, and test installation outside the checkout. Host tarballs must reference the released core version, not `file:../..`.
 5. Commit the release inputs and generated changes, then tag the intended commit. A failed or skipped registry job is not a successful publication.
 6. Verify the npm version and provenance, ClawHub package/skill entries, GitHub release assets, and installed runtime versions independently. Test each installed host against its own account.
+7. Submit the extension to the browser stores (Chrome Web Store, Firefox Add-ons, Edge Add-ons) following the [browser store submission](#browser-store-submission) procedure below. A pending or rejected review is a failed gate, the same as a failed registry job — it is not a successful publication until each store's dashboard shows the listing live.
 
 Do not reuse an already-published version for changed package contents.
 
@@ -45,6 +46,19 @@ Official references: [trusted publishers](https://docs.npmjs.com/trusted-publish
 Select the `clawhub` surface alongside `skill` and `openclaw-native` so Tool Factory generates the relevant publication jobs. Use the supported ClawHub authentication flow and supply the release credential through the host secret store or GitHub Actions secrets. Publishing the skill alone does not establish that the native plugin package is available, and vice versa.
 
 After publication, inspect both entries and install the native plugin through the same public path a new user would use. Verify operation registration and authenticated account identity on the destination host.
+
+## Browser store submission
+
+The `hosts/browser` extension ships to three stores from one WXT codebase (see [TARGETS.md](../hosts/browser/TARGETS.md)): Chrome Web Store and Edge Add-ons both install the same Chromium MV3 build, Firefox Add-ons needs the separate Firefox build and manifest.
+
+1. Build the per-engine packages after the version bump and before tagging: `npm --prefix hosts/browser run zip` (Chromium — Chrome and Edge) and `npm --prefix hosts/browser run zip:firefox`. Inspect each zip's `manifest.json` for the version before uploading.
+2. Use the listing copy already written for each store in [STORE-LISTINGS.md](STORE-LISTINGS.md) (title, description, category, permission justifications, search terms as applicable). Do not hand-write new copy at submission time.
+3. Confirm every item in [`hosts/browser/ASSETS.md`](../hosts/browser/ASSETS.md)'s "before any store submission" checklist is satisfied first: a real, non-placeholder icon set at all five manifest sizes, a 300×300 Store logo for Edge, at least one 1280×800 screenshot, and a privacy-policy URL pinned to the release tag (e.g. `https://github.com/GoatInAHat/vutoolkit/blob/vX.Y.Z/docs/PRIVACY.md`, not `main`, so the text a reviewer approves can't drift under the link afterward). None of these block the extension's own build or test suite; all four block a store from accepting the submission.
+4. Submit through each store's own developer dashboard (Chrome Web Store Developer Dashboard, Firefox Add-on Developer Hub, Microsoft Partner Center) using an account-holder's authenticated session. This step is manual and cannot be scripted or delegated to CI; it also carries each store's own one-time developer registration step (Chrome: a one-time developer-registration fee; Edge and Firefox: a free developer account).
+5. Record the submission date, review outcome (approved/rejected/pending), and the published listing URL for each store in [ACCEPTANCE.md](ACCEPTANCE.md). A pending review is not a completed gate; report it as pending, never as passed.
+6. After a store approves the listing, install it from that store — not from an unpacked or locally built package — on a clean browser profile, and verify the extension loads, pairs with a local kernel, and the YES content script mounts. This is the cross-browser installation verification the acceptance record expects, distinct from the unpacked-build checks `npx toolfactory validate` already covers.
+
+Each store reviews independently: a rejection on one does not block submitting to, or publishing on, the other two. Do not resubmit a rejected version without recording why it was rejected and what changed.
 
 ## Live tests and private accounts
 

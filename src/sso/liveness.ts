@@ -19,6 +19,9 @@ import { ensureGraphToken, GraphTokenCache } from "../graph/token.js";
 const AAI_SHELL_URL = "https://aai.app.vanderbilt.edu/aai";
 /** Probe ids are unique so parallel session checks never share an ephemeral token flight. */
 let microsoftProbeSequence = 0;
+/** A throttled proof GET is retried this many times, honoring retry-after up to the cap. */
+const MICROSOFT_PROBE_THROTTLE_RETRIES = 2;
+const PROBE_RETRY_AFTER_CAP_S = 30;
 
 /** The liveness check must not persist an OAuth token; its cache exists only in memory. */
 class MicrosoftProbeTokenCache extends GraphTokenCache {
@@ -30,7 +33,7 @@ class MicrosoftProbeTokenCache extends GraphTokenCache {
     return null;
   }
 
-  override put(): void {
+  override async put(): Promise<void> {
     // Liveness only needs the token for this one proof request.
   }
 }
@@ -65,16 +68,29 @@ export async function probeVanderbilt(cookies: CookieRecord[], fetchImpl?: typeo
  * Outlook's auth=2 shell check stopped working when Microsoft changed its redirect chain; use
  * the same supported silent Graph flow as graph.call so session health matches actual toolkit use.
  * The short-lived proof token is deliberately kept only in memory.
+ *
+ * A 429 is throttling, not a dead session: the proof GET is retried a bounded number of times
+ * honoring retry-after, so ensure never re-mints a healthy session just because the probe was
+ * rate-limited (the same discipline graphCall applies). Other non-200s stay "not proven alive".
  */
-export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof fetch): Promise<boolean> {
+export async function probeMicrosoft(cookies: CookieRecord[], fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>): Promise<boolean> {
   if (cookies.length === 0) return false;
+  const wait = sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   try {
     const token = await ensureGraphToken(cookies, new MicrosoftProbeTokenCache(), { fetchImpl });
-    const res = await (fetchImpl ?? fetch)("https://graph.microsoft.com/v1.0/me?$select=id", {
-      headers: { authorization: `Bearer ${token.accessToken}` },
-      signal: AbortSignal.timeout(20_000),
-    });
-    return res.status === 200;
+    for (let attempt = 0; attempt <= MICROSOFT_PROBE_THROTTLE_RETRIES; attempt++) {
+      const res = await (fetchImpl ?? fetch)("https://graph.microsoft.com/v1.0/me?$select=id", {
+        headers: { authorization: `Bearer ${token.accessToken}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (res.status === 429 && attempt < MICROSOFT_PROBE_THROTTLE_RETRIES) {
+        const asked = parseInt(res.headers.get("retry-after") ?? "", 10);
+        await wait((Number.isFinite(asked) && asked >= 0 ? Math.min(asked, PROBE_RETRY_AFTER_CAP_S) : PROBE_RETRY_AFTER_CAP_S) * 1000);
+        continue;
+      }
+      return res.status === 200;
+    }
+    return false;
   } catch {
     return false;
   }

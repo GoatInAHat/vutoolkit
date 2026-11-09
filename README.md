@@ -62,6 +62,10 @@ Configure non-secret identity with `setup.identity` or vault entries `VANDERBILT
 
 Browser selection: an explicit `VUTOOLKIT_CDP_URL` takes precedence, then `VUTOOLKIT_BROWSER_PROFILE`, then the host's compatible configured default. An incompatible implicit default may fall back to OpenClaw's managed profile. Explicit remote/custom endpoints never start an unrelated browser. Passkey enrollment requires full Chromium CDP/WebAuthn support, not merely a browser UI or extension relay.
 
+OpenClaw 2026.10.7 dismisses modal WebAuthn requests in headless profiles attached to its page-automation layer. This also cancels virtual-authenticator assertions before OneVU can validate them. `BROWSER_WEBAUTHN_BLOCKED` identifies that known injected guard; it is not evidence of a revoked passkey and must not trigger credential recovery. Keep toolkit authentication in a dedicated managed CDP profile (for example `openclaw browser create-profile --name vutoolkit-auth`), used through the toolkit's raw CDP driver rather than OpenClaw page automation, or use a supported headed browser. Do not attach the headless authentication profile to general browser snapshots or page automation, which installs the guard. No browser policy is disabled or bypassed by the toolkit.
+
+Set `VUTOOLKIT_BROWSER_PROFILE=vutoolkit-auth` in the toolkit host's environment. If also pinning `VUTOOLKIT_CDP_URL`, use that profile's actual endpoint: an explicitly paired profile may be restarted only when its configured endpoint matches exactly. A mismatch fails closed. A CDP URL without a paired profile remains attach-only. Neither session metadata's cached `healthy` flag nor `setup.status` proves live authentication; verify with `sessions.refresh` and a read-only service request.
+
 Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and `VUTOOLKIT_CDP_URL` through their own secret manager. Existing healthy sessions are reused.
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
@@ -159,3 +163,9 @@ The generated commands below describe the selected distribution surfaces, not pr
 - **npm package** — `npm install vutoolkit`
 
 <!-- /tf:install -->
+
+### Commodore Access read-only inspection (Linux)
+
+From this checkout, run `node --import tsx scripts/commodore-access.mjs --out /absolute/private/evidence-directory --repeat 2 --inspect-modify`. This uses the existing OneVU ceremony against the portal SP login, a fresh dedicated headless Chrome profile per run, and native-vault credentials. It reads Upcoming Exams and each offered Modify page; it never submits portal forms or accepts agreements. Chrome uses its ordinary compatibility UA because Cirrus rejects HeadlessChrome, and provider proxy variables are filtered just as for stock OpenClaw browser launches.
+
+It requires at least 3 GiB available RAM before each launch and closes its browser below 2 GiB. Receipts record actual assertion counters and browser closure, never credentials or cookies. Only the observed signature counter is saved back to the existing key, with compare/readback; no enrollment/recovery occurs. Run it serially. `--out` must be private and fresh; read the receipt before retrying a failed run. No gateway/plugin reload or build is required for this source-based command. The School Coordinator owns all booking changes.

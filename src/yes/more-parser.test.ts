@@ -20,3 +20,30 @@ it("resolves YES named detail helpers without relying on source order or executi
   const html = `${helper(0, "999")}${helper(1, "123")}<tr class="classRow"><td onclick="showCourseDetail_1()">CS</td><td>Computer Science</td><td>2000</td><td>Example</td><td>Engineering</td><td>Fall</td></tr>`;
   expect(parseCourseResults(html)[0]?.id).toBe("123");
 });
+it("normalizes Th-style day notation to R", () => {
+  const html = `<table class="classTable"><tr><td><span class="classAbbreviation">CS 1000:</span><span class="classDescription">Example</span></td></tr><tr class="odd classRow"><td id="classNumber_21" class="classSection" onclick="f({termCode: '1075'})">01</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">TTh</td><td class="classMeetingTimes">10:00a - 10:50a</td><td class="classBuilding">Hall 1</td><td class="classInstructor">Example, Professor</td></tr></table>`;
+  const sections = parseSectionResults(html);
+  expect(sections).toHaveLength(1);
+  expect(sections[0]!.meetings).toHaveLength(1);
+  expect(sections[0]!.meetings[0]!.days).toEqual(["T", "R"]);
+});
+it("falls back to the first building when a later meeting has no matching location line", () => {
+  const html = `<table class="classTable"><tr><td><span class="classAbbreviation">CS 1000:</span><span class="classDescription">Example</span></td></tr><tr class="odd classRow"><td id="classNumber_22" class="classSection" onclick="f({termCode: '1075'})">01</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">MWF<br>TR</td><td class="classMeetingTimes">10:00a - 10:50a<br>12:00p - 12:50p</td><td class="classBuilding">Hall 1</td><td class="classInstructor">Example, Professor</td></tr></table>`;
+  const sections = parseSectionResults(html);
+  expect(sections[0]!.meetings).toHaveLength(2);
+  expect(sections[0]!.meetings[1]!.location).not.toBe("");
+  expect(sections[0]!.meetings[1]!.location).toBe(sections[0]!.meetings[0]!.location);
+});
+it("leaves a Staff instructor cell unchanged", () => {
+  const html = `<table class="classTable"><tr><td><span class="classAbbreviation">CS 1000:</span><span class="classDescription">Example</span></td></tr><tr class="odd classRow"><td id="classNumber_23" class="classSection" onclick="f({termCode: '1075'})">01</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">MWF</td><td class="classMeetingTimes">10:00a - 10:50a</td><td class="classBuilding">Hall 1</td><td class="classInstructor">Staff</td></tr></table>`;
+  const sections = parseSectionResults(html);
+  expect(sections[0]!.instructors).toEqual(["Staff"]);
+});
+it("reuses a single day line across multiple meeting times without throwing", () => {
+  const html = `<table class="classTable"><tr><td><span class="classAbbreviation">CS 1000:</span><span class="classDescription">Example</span></td></tr><tr class="odd classRow"><td id="classNumber_24" class="classSection" onclick="f({termCode: '1075'})">01</td><td class="classHours">3.0 hrs</td><td class="classType">Lecture</td><td class="classMeetingDays">MWF</td><td class="classMeetingTimes">10:00a - 10:50a<br>12:00p - 12:50p</td><td class="classBuilding">Hall 1<br>Hall 2</td><td class="classInstructor">Example, Professor</td></tr></table>`;
+  expect(() => parseSectionResults(html)).not.toThrow();
+  const sections = parseSectionResults(html);
+  expect(sections[0]!.meetings).toHaveLength(2);
+  expect(sections[0]!.meetings[0]!.days).toEqual(["M", "W", "F"]);
+  expect(sections[0]!.meetings[1]!.days).toEqual(sections[0]!.meetings[0]!.days);
+});
