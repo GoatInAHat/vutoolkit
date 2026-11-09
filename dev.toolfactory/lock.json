@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.7",
+  "toolfactoryVersion": "0.4.8",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",
@@ -268,7 +268,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "e6541078a773a120f80ff40fb57c654b32a4f67a91bb3faf94546ff98d238a8a",
+      "sha256": "260ac38b93a25703ebbb8ffee6cbd1e645106971d7854f2c9446a808d016b08a",
       "state": "generated",
       "keys": [
         "name",
@@ -316,7 +316,7 @@
       "state": "manual"
     },
     "hosts/openclaw/tsconfig.json": {
-      "sha256": "106c946ea50b5c1a334631ad22dbbadcc7d1c19d416d7d02fd8bff0f75b2d603",
+      "sha256": "f4f56f60957adc5157ea2cdf577df0eba468de296bcac275951923c84af57288",
       "state": "generated"
     },
     "hosts/openclaw/vitest.config.ts": {
