@@ -7,9 +7,10 @@
     "declaration": true,
     "outDir": "dist",
     "skipLibCheck": true,
+    "rootDir": "src",
     "noEmitOnError": true
   },
   "include": [
-    "src/**/*.ts"
+    "src/index.ts"
   ]
 }
