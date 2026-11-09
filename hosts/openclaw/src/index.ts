@@ -332,7 +332,7 @@ const entry = defineToolPlugin({
     }),
     tool({
       name: "vutoolkit_graph_call",
-      description: "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
+      description: "Call the public Microsoft Graph API if Entra grants Graph authorization. For inbox reads with the Outlook web session, use outlook.inbox. For Graph, the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
       parameters: Type.Unsafe({
         "type": "object",
         "properties": {
@@ -368,6 +368,26 @@ const entry = defineToolPlugin({
       }),
       execute: async (params, config) =>
         operation("graph.call").handler(params as never, {
+          config: config as Record<string, string | undefined>,
+          dataDir: dataDir(),
+        }),
+    }),
+    tool({
+      name: "vutoolkit_outlook_inbox",
+      description: "Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.",
+      parameters: Type.Unsafe({
+        "type": "object",
+        "properties": {
+          "limit": {
+            "default": 10,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          }
+        }
+      }),
+      execute: async (params, config) =>
+        operation("outlook.inbox").handler(params as never, {
           config: config as Record<string, string | undefined>,
           dataDir: dataDir(),
         }),

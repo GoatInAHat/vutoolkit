@@ -17,7 +17,7 @@ This skill supplies instructions, not the runtime or credentials. First check wh
 
 1. Use the current host's account and secret vault. Keep different people's accounts in separate host vaults and data directories. `setup.status` reports configuration/browser prerequisites, not live acceptance of a passkey. A structurally valid key may still be rejected by OneVU.
 2. For GPA planning, call `record.fetch`, then pass the returned transcript to `gpa.verify`. Only describe a projection as verified when the official posted totals match; the default synthetic fixture does not verify a real student's record. Pass that same transcript to `grades.whatif` with the requested hypothetical grades.
-3. For Microsoft data, use `graph.call` with the smallest read that answers the request. Confirm the account identity with `/me` when validating a new installation. Use POST, PATCH, PUT, or DELETE only for actions authorized by the account holder.
+3. For recent inbox conversations, use `outlook.inbox`. It verifies the mailbox identity and refreshes the Outlook web session as needed. Use `graph.call` for public Microsoft Graph operations when Entra grants Graph authorization. Use POST, PATCH, PUT, or DELETE only for actions authorized by the account holder.
 4. If authentication fails, report the typed error and the missing setup prerequisite. Do not claim a live check passed because a fixture or cached metadata call succeeded.
 5. For degree planning, start from `degree.audit` or `degree.graph`, retrieve official alternatives with `degree.options`, and use catalog metadata with `planner.graph`. Preserve unknown prerequisites and truncation warnings; never equate a ranked path with official eligibility.
 6. For scheduling, fetch live sections with `courses.sections`, then use `scheduler.solve`. Check TBA times, component compatibility, and term before using a result. `scheduler.cartPlan` only returns a diff; the YES extension applies user-selected cart changes, never enrollment.
@@ -112,11 +112,19 @@ Arguments: `transcript`, `hypotheticals`.
 
 ### graph.call
 
-Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {"$top": 10, "$select": "subject,from"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.
+Call the public Microsoft Graph API if Entra grants Graph authorization. For inbox reads with the Outlook web session, use outlook.inbox. For Graph, the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {"$top": 10, "$select": "subject,from"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.
 
 Arguments: `method`, `path`, `query`, `body`.
 
 `vutoolkit graph.call --json '<arguments>'` prints a JSON result. MCP tool `graph.call` on server `vutoolkit` returns the same result as `structuredContent`.
+
+### outlook.inbox
+
+Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.
+
+Arguments: `limit`.
+
+`vutoolkit outlook.inbox --json '<arguments>'` prints a JSON result. MCP tool `outlook.inbox` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### planner.graph
 

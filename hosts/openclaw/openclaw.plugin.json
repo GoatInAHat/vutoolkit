@@ -32,6 +32,7 @@
       "vutoolkit_gpa_verify",
       "vutoolkit_grades_whatif",
       "vutoolkit_graph_call",
+      "vutoolkit_outlook_inbox",
       "vutoolkit_planner_graph",
       "vutoolkit_professors_search",
       "vutoolkit_record_fetch",

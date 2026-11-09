@@ -18,7 +18,8 @@ This is an independent, community-developed project, not an official Vanderbilt 
 | Session interoperability | `sessions.ingest`, `sessions.open`, `sessions.forget` | Cookie, CDP, and Playwright formats for authorized clients |
 | Academic record | `record.fetch` | Historical grades and current courses from YES |
 | GPA planning | `gpa.verify`, `grades.whatif` | Compare calculated GPA with the official record before projecting hypothetical grades |
-| Microsoft Graph | `graph.call` | Mail, calendar, profile, and other API resources accessible to the student's session |
+| Outlook inbox | `outlook.inbox` | Recent conversation summaries through the signed-in Outlook web session |
+| Microsoft Graph | `graph.call` | Public API resources when Entra grants a Graph access token |
 | Degree and course data | `degree.audit`, `degree.graph`, `degree.options`, `courses.*` | Official YES requirements, course alternatives, prerequisite descriptions, and section metadata |
 | Prerequisite planning | `planner.graph` | Directed AND/OR graph, completed/planned courses, weighted alternatives, explicit unknowns |
 | Schedule planning | `scheduler.solve`, `scheduler.cartPlan` | Conflict-free combinations, lecture/lab components, free-time preferences, and cart-only diffs |
@@ -65,6 +66,8 @@ Browser selection: an explicit `VUTOOLKIT_CDP_URL` takes precedence, then `VUTOO
 Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and `VUTOOLKIT_CDP_URL` through their own secret manager. Existing healthy sessions are reused.
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
+
+For a passkey-backed mailbox read, call `outlook.inbox`. It reads recent conversation summaries from Outlook on the web and checks the configured mailbox identity. Microsoft session readiness uses Outlook’s own authenticated response. Public Microsoft Graph authorization is separate.
 
 ### Credential cache storage
 

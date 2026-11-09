@@ -16,6 +16,10 @@ import { YesClient } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
 import { sessionStore, harvestToStoredSession } from "./vault/file-store.js";
 import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
+import { inboxConversation, readOutlookInbox } from "./outlook/inbox.js";
+import { ensureBrowser, resolveBrowser } from "./sso/browser-config.js";
+import { AuthError } from "./sso/errors.js";
+import { probeSession } from "./sso/liveness.js";
 import { graphCall } from "./graph/client.js";
 import { ensureGraphToken, graphTokenCache } from "./graph/token.js";
 import { operation, type Context } from "./toolfactory/types.js";
@@ -189,9 +193,30 @@ export const operations = [
     handler: async ({ idp }, ctx) => ensureSession(idp, vaultStore(ctx)),
   }),
   operation({
+    name: "outlook.inbox",
+    description: "Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.",
+    input: z.object({ limit: z.number().int().min(1).max(25).default(10) }),
+    output: z.object({ conversations: z.array(inboxConversation) }),
+    requires: ["net", "secret"],
+    annotations: { readOnlyHint: true },
+    handler: async ({ limit }, ctx) => {
+      const env = credentialEnv(ctx.config);
+      const email = env.VUTOOLKIT_VU_EMAIL || defaultSecretsRead("VANDERBILT_EMAIL");
+      const browser = await resolveBrowser(env);
+      await ensureBrowser(browser);
+      let inbox = await readOutlookInbox(browser.cdpUrl, email);
+      if (!inbox) {
+        await ensureSession("microsoft", vaultStore(ctx), { forceRefresh: true, env });
+        inbox = await readOutlookInbox(browser.cdpUrl, email);
+      }
+      if (!inbox) throw new AuthError("MICROSOFT_FLOW_CHANGED", "Outlook did not return an authenticated inbox response.", { retryable: true });
+      return { conversations: inbox.slice(0, limit) };
+    },
+  }),
+  operation({
     name: "graph.call",
     description:
-      "Call Microsoft Graph as the student with zero-step auth: the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
+      "Call the public Microsoft Graph API if Entra grants Graph authorization. For inbox reads with the Outlook web session, use outlook.inbox. For Graph, the vaulted Microsoft session's Entra cookies silently mint a Graph token (no browser, no interaction; cached ~1h, re-minted on demand). path is a v1.0 path like /me or /me/mailFolders/inbox/messages; query carries OData parameters (for example {\"$top\": 10, \"$select\": \"subject,from\"}). GETs are reads; POST/PATCH/PUT/DELETE change the real mailbox and calendar - reserve them for approved actions.",
     input: z.object({
       method: z.enum(["GET", "POST", "PATCH", "PUT", "DELETE"]).default("GET"),
       path: z.string().regex(/^\/(?!\/)/, "a relative Graph v1.0 path starting with a single /"),
@@ -202,7 +227,7 @@ export const operations = [
     requires: ["net", "secret"],
     handler: async ({ method, path, query, body }, ctx) => {
       const store = vaultStore(ctx);
-      await ensureSession("microsoft", store);
+      await ensureSession("microsoft", store, { probe: probeSession });
       const cache = graphTokenCache(ctx.dataDir, credentialEnv(ctx.config));
       const getToken = (opts: { force?: boolean }): Promise<string> =>
         ensureGraphToken(store.cookies("microsoft"), cache, { ...opts, loginHint: bestEffortLoginHint() }).then(

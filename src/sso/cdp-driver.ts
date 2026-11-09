@@ -7,6 +7,7 @@ export interface CdpTab {
   send: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>;
   evaluate: (expression: string) => Promise<unknown>;
   tabId: string;
+  onEvent?: (listener: (method: string, params: Record<string, unknown>) => void) => void;
 }
 
 /** Gateway proxy env breaks loopback CDP fetches; bypass only for loopback, keep egress proxy. */
@@ -62,12 +63,15 @@ export async function withCdpTab<T>(
     ws.onclose = () => failAll("ceremony CDP websocket closed");
     ws.onerror = () => failAll("ceremony CDP websocket failed");
     let mid = 0;
+    const listeners = new Set<(method: string, params: Record<string, unknown>) => void>();
     ws.onmessage = (ev) => {
       try {
-        const m = JSON.parse(String(ev.data)) as { id?: number; error?: unknown; result?: unknown };
+        const m = JSON.parse(String(ev.data)) as { id?: number; error?: unknown; result?: unknown; method?: string; params?: Record<string, unknown>; sessionId?: string };
         if (m.id && pending.has(m.id)) {
           pending.get(m.id)!.settle(m);
           pending.delete(m.id);
+        } else if (m.method && m.params && m.sessionId === sessionId) {
+          for (const listener of listeners) listener(m.method, m.params);
         }
       } catch { /* non-JSON frames are events; ignored */ }
     };
@@ -117,7 +121,7 @@ export async function withCdpTab<T>(
       return r.result?.value;
     };
     if (!tabId) throw new Error("ceremony CDP target was not created");
-    return await fn({ send, evaluate, tabId });
+    return await fn({ send, evaluate, tabId, onEvent: listener => { listeners.add(listener); } });
   } finally {
     // Isolated proof contexts never survive, including keepOpen and failed assertions.
     if (browserContextId && browserSend) {

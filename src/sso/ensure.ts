@@ -258,6 +258,9 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
     if (justAcquired(existing, now)) {
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
     }
+    // Re-harvest a Microsoft session after the grace period. The Outlook browser can
+    // renew its own credentials, so a successful page load would not prove the old cookies alive.
+    if (idp === "microsoft" && !deps.probe) return mint(idp, store, deps);
     const cookies: CookieRecord[] = store.cookies(idp);
     const probeStarted = Date.now();
     const alive = await (deps.probe ?? probeSession)(idp, cookies);

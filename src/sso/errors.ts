@@ -14,6 +14,7 @@ export type AuthErrorCode =
   | "OKTA_FLOW_CHANGED"
   /** The Microsoft sign-in never reached Outlook. */
   | "MICROSOFT_FLOW_CHANGED"
+  | "OUTLOOK_ACCOUNT_MISMATCH"
   /** Microsoft sign-in bounced to OneVU because the browser holds no live Okta session. */
   | "OKTA_SESSION_REQUIRED"
   /** The silent OAuth authorize for Graph refused the vaulted session, or the code exchange failed. */
