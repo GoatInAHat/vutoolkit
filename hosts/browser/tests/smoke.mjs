@@ -1,4 +1,4 @@
-// Authored smoke harness, adopted through Tool Factory for the custom onboarding UI.
+// Authored smoke harness, adopted through Tool Factory for the custom operations UI.
 /**
  * The keyless end-to-end: the built `chrome-mv3` output is side-loaded into a real Chromium and
  * driven the way a human drives it — the options page takes the pairing string, the popup renders
@@ -58,8 +58,7 @@ try {
 
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${id}/popup.html`);
-  // A fresh extension intentionally opens custom onboarding, not the operations page.
-  await popup.getByText("Continue in the full page", { exact: false }).waitFor();
+  // This review lineage has no deployment-only fresh-install onboarding redirect.
   await popup.getByRole("button", { name: "Operations", exact: true }).click();
   await popup.getByRole("button", { name: CASE.name, exact: true }).click();
   for (const [name, value] of Object.entries(CASE.arguments)) {
