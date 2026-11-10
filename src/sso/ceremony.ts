@@ -83,6 +83,8 @@ export interface OktaProbe {
   verifying?: boolean;
   /** Okta's form error text, empty when none is shown. */
   error: string;
+  /** OpenClaw's headless-modal guard cancels even CDP-backed virtual-authenticator requests. */
+  webauthnBlocked?: boolean;
 }
 
 export type OktaFlowState =
@@ -110,7 +112,10 @@ const PROBE_EXPR =
   " const error = errEl ? (errEl.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 200) : '';" +
   " const heading = (document.querySelector('h2')?.textContent || '').trim();" +
   " const verifying = location.origin === 'https://onevu.vanderbilt.edu' && heading === 'Verify with Security Key or Biometric Authenticator' && vis('[data-se=switchAuthenticator]');" +
-  " return { url: location.href, identifier: vis('input[name=identifier]'), webauthn: vis('[data-se=webauthn] [data-se=button]'), verifying, error };" +
+  " const methods = globalThis.CredentialsContainer?.prototype;" +
+  " const guarded = (method) => typeof method === 'function' && /opensDialog/.test(Function.prototype.toString.call(method)) && /dismissed/.test(Function.prototype.toString.call(method));" +
+  " const webauthnBlocked = guarded(methods?.get) || guarded(methods?.create);" +
+  " return { url: location.href, identifier: vis('input[name=identifier]'), webauthn: vis('[data-se=webauthn] [data-se=button]'), verifying, error, webauthnBlocked };" +
   "})()";
 
 /** Tick Okta's "Keep me signed in" when it is offered, so the Okta session survives browser restarts. */
@@ -171,6 +176,9 @@ export async function runSsoCeremony(opts: CeremonyOptions): Promise<MintedSessi
         first = false;
         const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as OktaProbe | null;
         if (!probe) continue; // mid-navigation; probe again
+        if (probe.webauthnBlocked) {
+          throw new AuthError("BROWSER_WEBAUTHN_BLOCKED", "The selected browser's host policy cancels WebAuthn before the virtual authenticator can answer. Use a dedicated CDP authentication profile not attached to OpenClaw's headless page automation, or a supported headed profile. Do not rotate the passkey or retry this browser unchanged.", { retryable: false });
+        }
         finalUrl = String(probe.url ?? "");
         const state = classifyOktaFlow(probe);
         if (state.kind !== "verifying") verificationStarted = undefined;
