@@ -260,6 +260,7 @@ const ENROLL_STATE = `(() => {
       .map(e => red(e.value || e.innerText || e.getAttribute('aria-label')).slice(0, 30)).filter(Boolean).slice(0, 6),
     error: red(document.querySelector('.o-form-error-container,.okta-form-infobox-error,[role=alert]')?.textContent).slice(0, 120),
     text: red(document.body?.innerText).slice(0, 160),
+    recorder: !!(navigator.credentials && navigator.credentials.__vt),
     webauthn,
   };
 })()`;
@@ -294,7 +295,8 @@ export const SUBMIT_PASSKEY_ENROLLMENT = `(() => {
   const heading = document.querySelector('[data-se="o-form-head"]')?.textContent || '';
   if (/Set up security methods/i.test(text)) return false;
   if (!${PASSKEY_NAME}.test(heading) && !/Set up (a |your )?(security key or biometric|passkey)/i.test(text)) return false;
-  const choices = [...document.querySelectorAll('input[type="submit"],button')].filter(vis)
+  const choices = [...document.querySelectorAll('input[type="submit"],button,a,[role=button],[data-se=button]')].filter(vis)
+    .filter(e => !e.parentElement?.closest('button,a,[role=button],[data-se=button]'))
     .filter(e => /^(Set up|Enroll|Register|Continue|Create)$/i.test((e.value || e.textContent || '').trim()));
   if (choices.length !== 1) return false; choices[0].click(); return true;
 })()`;
@@ -391,6 +393,8 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     let serialized: string | undefined;
     let factorClicks = 0;
     let listClicks = 0;
+    let submits = 0;
+    let lastSubmitAt = 0;
     try {
       await tab.send("Page.navigate", { url: SETTINGS_URL });
       const initial = await waitForPage(tab, deps, expectedEmail);
@@ -476,7 +480,9 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
         // After a step-up OneVU may list the security methods to set up; pick only the passkey row.
         if (!enrollmentSubmitted && listClicks < 2 && await tab.evaluate(CHOOSE_PASSKEY_METHOD).catch(() => false) === true) { listClicks++; continue; }
         // Only a single enrollment-screen submit is eligible; never select a different factor.
-        if (!enrollmentSubmitted && await tab.evaluate(SUBMIT_PASSKEY_ENROLLMENT).catch(() => false) === true) enrollmentSubmitted = true;
+        // A second press only if the first started no WebAuthn request within 15s.
+        if ((!enrollmentSubmitted || (submits < 2 && now() - lastSubmitAt > 15_000 && !/"kind":"create"/.test(lastState)))
+          && await tab.evaluate(SUBMIT_PASSKEY_ENROLLMENT).catch(() => false) === true) { enrollmentSubmitted = true; submits++; lastSubmitAt = now(); }
       }
       if (staged) return { status: "stored-awaiting-confirmation" as const, secretName: PENDING_SECRET_NAME, serverConfirmed: false, existingPasskeysRevoked: false };
       throw new SetupError("ENROLLMENT_INCOMPLETE", `OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup. Last page: ${lastState.slice(0, 600)}`);
