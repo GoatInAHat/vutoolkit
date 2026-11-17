@@ -299,15 +299,24 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
   const browser = await browserSelection(deps);
   await (deps.browserReady ? deps.browserReady(browser.cdpUrl) : ensureBrowser(browser));
   return (deps.tab ?? withCdpTab)(browser.cdpUrl, SETTINGS_URL, async (tab) => {
-    const initial = await waitForPage(tab, deps, expectedEmail);
-    if (!initial.authenticated || !initial.identityMatched || !initial.enrollmentAvailable) throw new SetupError("SIGN_IN_REQUIRED", "Use setup.prepare and complete sign-in in the managed browser. The configured account identity must be visibly verified before enrollment; no enrollment was attempted.");
+    const verified = await waitForPage(tab, deps, expectedEmail);
+    if (!verified.authenticated || !verified.identityMatched || !verified.enrollmentAvailable) throw new SetupError("SIGN_IN_REQUIRED", "Use setup.prepare and complete sign-in in the managed browser. The configured account identity must be visibly verified before enrollment; no enrollment was attempted.");
+    // Attach the virtual authenticator on a blank document, then reload settings, as the sign-in
+    // ceremony does. Attached on the settings page itself, Chromium dropped it when OneVU moved to
+    // its enrollment page ("Virtual Authenticator Environment has not been enabled").
+    await tab.send("Page.navigate", { url: "about:blank" });
+    for (let n = 0; n < 20 && await tab.evaluate("location.href").catch(() => null) !== "about:blank"; n++) await (deps.wait ?? sleep)(250);
     let authenticatorId = await authenticator(tab);
     let authenticatorResets = 0;
+    let lastAttachError = "";
     let staged = false;
     let enrollmentSubmitted = false;
     let serialized: string | undefined;
     let factorClicks = 0;
     try {
+      await tab.send("Page.navigate", { url: SETTINGS_URL });
+      const initial = await waitForPage(tab, deps, expectedEmail);
+      if (!initial.authenticated || !initial.identityMatched || !initial.enrollmentAvailable) throw new SetupError("SIGN_IN_REQUIRED", "OneVU settings did not load again with the configured account after the passkey helper was attached; no enrollment was attempted.");
       const clicked = await tab.evaluate(`(() => {
         if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname !== '/account-settings/security') return false;
         const section = [...document.querySelectorAll('[data-se="enrolled-authenticator-container"]')]
@@ -327,10 +336,14 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
           // A cross-document navigation (OneVU's step-up and enrollment pages) can swap the
           // renderer and drop the virtual authenticator. Before any credential exists, attach a
           // fresh one so the enrollment page still finds it; afterwards, keep the staged copy.
-          if (staged || authenticatorResets >= MAX_AUTHENTICATOR_RESETS) throw error;
+          if (staged || authenticatorResets >= MAX_AUTHENTICATOR_RESETS) {
+            const reason = error instanceof Error ? error.message : String(error);
+            throw new SetupError("AUTHENTICATOR_LOST", `The browser's virtual authenticator became unavailable during enrollment (${reason}${lastAttachError ? `; re-attaching failed: ${lastAttachError}` : ""}). No credential was created.`);
+          }
           authenticatorResets++;
           await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
-          authenticatorId = await authenticator(tab).catch(() => authenticatorId);
+          try { authenticatorId = await authenticator(tab); lastAttachError = ""; }
+          catch (attachError) { lastAttachError = attachError instanceof Error ? attachError.message : String(attachError); }
           continue;
         }
         if (!staged && result.credentials.length > 0) {

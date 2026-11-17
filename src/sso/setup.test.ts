@@ -20,7 +20,7 @@ function harness(options: { existing?: string; signedIn?: boolean; identityMatch
   const calls: string[] = [];
   const page = () => ({ authenticated: options.signedIn !== false, identityMatched: options.identityMatched ?? options.signedIn !== false, enrollmentAvailable: options.signedIn !== false,
     enrolledCount: started && options.acknowledge !== false ? 2 : 1, signInRequired: options.signedIn === false });
-  const send = vi.fn(async (method: string) => {
+  const send = vi.fn(async (method: string, _params?: Record<string, unknown>) => {
     calls.push(method);
     if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-authenticator" };
     if (method === "WebAuthn.getCredentials") return { credentials: started ? [credential] : [] };
@@ -42,7 +42,7 @@ function harness(options: { existing?: string; signedIn?: boolean; identityMatch
     wait: async (ms) => { clock += ms; }, now: () => clock,
     tab: (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: send as CdpTab["send"], evaluate })) as SetupDeps["tab"],
   };
-  return { deps, write, calls, vault, evaluate };
+  return { deps, write, calls, vault, evaluate, send };
 }
 
 describe("OneVU setup", () => {
@@ -219,6 +219,15 @@ describe("OneVU setup", () => {
     expect(h.write).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result).includes(credential.privateKey)).toBe(false);
     expect(h.calls).toContain("WebAuthn.removeVirtualAuthenticator");
+  });
+
+  it("attaches the virtual authenticator on a blank page, then reloads settings, before enrolling", async () => {
+    const h = harness();
+    await enrollSetup({ confirm: true }, h.deps);
+    const navigations = h.send.mock.calls.filter(([method]) => method === "Page.navigate").map(([, params]) => (params as { url: string }).url);
+    expect(navigations).toEqual(["about:blank", "https://onevu.vanderbilt.edu/account-settings/security"]);
+    const order = h.calls.filter((m) => m === "Page.navigate" || m === "WebAuthn.addVirtualAuthenticator");
+    expect(order).toEqual(["Page.navigate", "WebAuthn.addVirtualAuthenticator", "Page.navigate"]);
   });
 
   it("preserves a vaulted new credential without claiming server acceptance when confirmation is missing", async () => {
