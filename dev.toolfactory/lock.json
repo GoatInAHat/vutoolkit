@@ -54,7 +54,7 @@
       "state": "generated"
     },
     ".env.example": {
-      "sha256": "c9a879c0a79c832dc79e14f41dface0fccbeec7239ea8e01111d239ef4471705",
+      "sha256": "ed85f3a015eb47b2cec43d6788a2db1fc609dfa1f054112bc8cae144649de424",
       "state": "generated"
     },
     ".gitattributes": {
@@ -243,7 +243,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "a71799633891628d6b0bd6a7669888b09c94f5f5210963c6777453b5948985f2",
+      "sha256": "c6a58393015e83a85917b420ae2ee32f5c383cb1266702ba45dd803685a64d80",
       "state": "generated",
       "keys": [
         "id",
