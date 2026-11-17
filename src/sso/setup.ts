@@ -384,6 +384,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     await tab.send("Page.navigate", { url: "about:blank" });
     for (let n = 0; n < 20 && await tab.evaluate("location.href").catch(() => null) !== "about:blank"; n++) await (deps.wait ?? sleep)(250);
     let authenticatorId = await authenticator(tab);
+    await tab.send("Page.enable").catch(() => {});
     const recorder = await tab.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", { source: WEBAUTHN_RECORDER }).catch(() => undefined);
     const env = deps.env ?? process.env;
     let lastState = "";
