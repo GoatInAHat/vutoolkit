@@ -38,4 +38,30 @@ describe("schedule selection", () => {
     const omitted = solveSchedules({ sections, excludedCourses: ["A"], excludedSectionIds: ["lab"] });
     expect(omitted.schedules[0]!.sections.map((section) => section.id)).toEqual(["b"]);
   });
+  it("rejects sections spanning more than one term", () => {
+    const a = section("a1", "A", 600, 660); a.termCode = "1268";
+    const b = section("a2", "A", 700, 760); b.termCode = "1272";
+    expect(() => solveSchedules({ sections: [a, b] })).toThrow("one term only");
+  });
+  it("composes sectionsConflict pairwise across three linked components", () => {
+    const lecture = section("lec", "A", 600, 660); lecture.compatibleWith = ["lab1", "disc1"];
+    const lab1 = section("lab1", "A", 700, 760, "Lab");
+    const lab2 = section("lab2", "A", 760, 820, "Lab");
+    const disc1 = section("disc1", "A", 820, 880, "Discussion");
+    const disc2 = section("disc2", "A", 880, 940, "Discussion");
+    const result = solveSchedules({ sections: [lecture, lab1, lab2, disc1, disc2] });
+    expect(result.schedules).toHaveLength(1);
+    expect(result.schedules[0]!.sections.map((s) => s.id).sort()).toEqual(["disc1", "lab1", "lec"]);
+  });
+  it("cartDifference treats an unchanged component in a mixed-component swap as unchanged", () => {
+    const lecture = section("lec", "A", 600, 660);
+    const lab1 = section("lab1", "A", 700, 760, "Lab");
+    const lab2 = section("lab2", "A", 760, 820, "Lab");
+    const result = cartDifference([lecture.id, lab1.id], [lecture, lab2], [lecture, lab1, lab2]);
+    expect(result.add).toEqual(["lab2"]);
+    expect(result.remove).toEqual(["lab1"]);
+    expect(result.add).not.toContain("lec");
+    expect(result.remove).not.toContain("lec");
+    expect(result.unchanged).toContain("lec");
+  });
 });

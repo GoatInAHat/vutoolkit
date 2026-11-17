@@ -1,6 +1,6 @@
 {
   "name": "openclaw-plugin-vutoolkit",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
   "type": "module",
   "private": true,
@@ -26,8 +26,8 @@
     "vutoolkit": "file:../.."
   },
   "devDependencies": {
-    "openclaw": "2026.9.4",
-    "typescript": "^5.9.0",
+    "openclaw": "2026.10.10-beta.5",
+    "typescript": "7.0.2",
     "vitest": "^3.2.0"
   },
   "openclaw": {
@@ -38,7 +38,7 @@
       "pluginApi": ">=2026.5.17"
     },
     "build": {
-      "openclawVersion": "2026.9.4"
+      "openclawVersion": "2026.10.10-beta.5"
     }
   },
   "pluginInspector": {

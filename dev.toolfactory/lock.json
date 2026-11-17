@@ -1,5 +1,5 @@
 {
-  "toolfactoryVersion": "0.4.6",
+  "toolfactoryVersion": "0.4.8",
   "files": {
     ".agents/mcp/servers.json": {
       "sha256": "e007bb0bd9cf68df55700f7a76d99249a025c0de062212603d69b383ff46449a",
@@ -102,11 +102,11 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "c7412596de14508f59446a49d9ee9e1b88e74517c2e7dbb2709c93655970baec",
+      "sha256": "316fb2800f3552b4c7099bfd205a8862e52b6ed884afc4483e523145f5da4f4a",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
-      "sha256": "12edc0a8bc419240fbcaaa126535662fee8c7e6d59288f3cc5ac396b99b80881",
+      "sha256": "6b1b1aa9f6ed8257984d431d413f0c3ae85a0adea7fff7356dfa8f54032d2376",
       "state": "generated"
     },
     "dev.toolfactory/inspector.json": {
@@ -133,13 +133,7 @@
     },
     "hosts/browser/entrypoints/example.content.ts": {
       "sha256": "af0ccf8dfdf49ee3740375b4eccd955a78decdfb227d31295b06b44be6bb8237",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:content",
-          "end": "// /tf:content"
-        }
-      ]
+      "state": "manual"
     },
     "hosts/browser/entrypoints/options/index.html": {
       "sha256": "62208a37ef5e3ba119d4db24bb71dee21c007df1aace73b263cb0e2f4b95f8fd",
@@ -162,7 +156,7 @@
       "state": "generated"
     },
     "hosts/browser/package.json": {
-      "sha256": "efbb8106568ab97beef3111f9defe8e07b696088835e8642d51b46a5776eaae3",
+      "sha256": "ce133c830af3e537f1d399456026e8805f8d6682345ad9b718bc6b0e3cd638b3",
       "state": "generated",
       "keys": [
         "name",
@@ -199,11 +193,11 @@
       "state": "generated"
     },
     "hosts/browser/TARGETS.md": {
-      "sha256": "9978bd2a47f9808c586ac51dcfd16fb848fef4f034ac74073af57706641ccd17",
+      "sha256": "182733c52071f72a9edee4530880b2e3e5573b912f284496b76f8cbad5bdbc2f",
       "state": "generated"
     },
     "hosts/browser/tests/background.test.ts": {
-      "sha256": "01475e61d73547ffcedd2bba67c476251687fd492f6d97dda5e053ce60f7b1f3",
+      "sha256": "3446f0841ce4115b1b87114a2f070c0e3ed1e7cd7e0ae36486a09b4e66778a61",
       "state": "generated"
     },
     "hosts/browser/tests/smoke.mjs": {
@@ -249,7 +243,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "c84c6daef708d5b638a8c4f1d62002e2752cc6b13b28423d96679e421dbccf16",
+      "sha256": "50e4f0e6741ee70a7a1c457bcce3de6b41935f21ee7338e6e6cace9f500e2469",
       "state": "generated",
       "keys": [
         "id",
@@ -268,7 +262,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "89aec17b4cb18e823dc1012657af6e9507652de5d69ac768e3030636714e60c3",
+      "sha256": "a43b28b5f977cab0cc644c12ba0023a2aab1756837451548a4012b8a719af4e5",
       "state": "generated",
       "keys": [
         "name",
@@ -300,29 +294,23 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "1b136a317a7fe8d84c690b7fc318262fa33ae635ba4681c66058f77c693ff9a4",
+      "sha256": "a08a9cac5e3dd4b621f9c01245be1f05cfd498697a57c6a728818855c4ca8de5",
       "state": "generated"
     },
     "hosts/openclaw/skills/vutoolkit/SKILL.md": {
-      "sha256": "b07c8a985f616fffe6f226f239e124482da0701b3c1d6656cf25dcf5243bbb85",
+      "sha256": "2b9300182a1d62318e10ded904a59fd0b753fea4ac38b3381f6ce631cb48ba67",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
-      "sha256": "5a22a92565c6591dbfe3c338ed0dfbc113a6bec9dbeb1a8b9f0326380249e970",
+      "sha256": "3427c5bfb9ff54e5a64d9d0230ef9997e5667a322ed5c7202d8a45632d7c12e9",
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "fc2c6cb309a64f6f2c37aa1699cf7cebede237354f231d5aa88f4cc87df60b9d",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:entry",
-          "end": "// /tf:entry"
-        }
-      ]
+      "sha256": "f11ef5122024752359874618c79456e0fd9f804a3472c2d9047e7ca0747a683f",
+      "state": "manual"
     },
     "hosts/openclaw/tsconfig.json": {
-      "sha256": "106c946ea50b5c1a334631ad22dbbadcc7d1c19d416d7d02fd8bff0f75b2d603",
+      "sha256": "f4f56f60957adc5157ea2cdf577df0eba468de296bcac275951923c84af57288",
       "state": "generated"
     },
     "hosts/openclaw/vitest.config.ts": {
@@ -330,7 +318,7 @@
       "state": "generated"
     },
     "package.json": {
-      "sha256": "4135bdbeee8785c5178cc1d6ef5ee2ced43e8d4ff5dbe2a24b4f594538977959",
+      "sha256": "ffd710f57559409cbdd591be06c31142d4524b843dba49fd5c19109516395c12",
       "state": "generated",
       "keys": [
         "name",
@@ -346,7 +334,7 @@
       ]
     },
     "README.md": {
-      "sha256": "7ba8ff30d3b4385ca3f6b5c406c30c0d7e888e0615f24d1ae7f23b77dce41772",
+      "sha256": "0a126bf956eb28f969657b2f1bf04e3f354e340602234675e12f66e3c6910b19",
       "state": "generated",
       "regions": [
         {
@@ -366,7 +354,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "3769ce37d051882f5f010f9218c94e1bb0a9eabe91fe28c3528fe9cfbe7fac15",
+      "sha256": "2f9932f222e12d77b67cd27d1f457dc85a8a7351715a74135b15f3f2e85590f2",
       "state": "generated",
       "regions": [
         {
@@ -380,7 +368,7 @@
       ]
     },
     "src/toolfactory/cli.ts": {
-      "sha256": "386d2ba78ab1d3ca81074356450c66e80cfae152520365ebdfd9ed39e9995511",
+      "sha256": "51c2fd2cb5b20fad9e805e3dc979516747e9b5f9164d638da1272ec5cddaa2b8",
       "state": "generated"
     },
     "src/toolfactory/config.ts": {
@@ -388,7 +376,7 @@
       "state": "generated"
     },
     "src/toolfactory/mcp.ts": {
-      "sha256": "c6f60a3cab798f2870cec8cdb1a28c1d01d1ee9f8e53eeeded95788c4cda5f79",
+      "sha256": "5b1544251e7dfc1a4b42015615764b5d4d5e25b6ea043651653f0deb31a071e0",
       "state": "generated"
     },
     "src/toolfactory/types.ts": {
@@ -452,7 +440,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "acc41eba451bd9740e2fa4f9fb907d27be829656717cde9045022e6b022368fc",
+      "sha256": "3660d7dd02a7b7b73db095be1feda16c45b457baf7118c29347ea2cc0249fcf1",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

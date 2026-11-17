@@ -45,24 +45,34 @@ describe("new-passkey proof", () => {
 
 // Exact Oct 11 observed DOM: automatic verification, only recovery links, no Verify button.
 // Execute the production probe against it, rather than mocking the classifier's output.
-function pendingVerification(options: { recover?: boolean; heading?: string; origin?: string } = {}) {
+function pendingVerification(options: { recover?: boolean; heading?: string; origin?: string; guarded?: boolean } = {}) {
   vi.useFakeTimers();
   const location = new URL(options.origin ?? "https://onevu.vanderbilt.edu/oauth2/v1/authorize");
   const link = { getClientRects: () => [{}], offsetParent: {}, textContent: "Verify with something else" };
   const heading = { textContent: options.heading ?? "Verify with Security Key or Biometric Authenticator" };
   const document = { querySelector: (selector: string) => selector === "h2" ? heading : selector === "[data-se=switchAuthenticator]" ? link : null };
-  const send = vi.fn(async (method: string) => {
+  let injected = 5;
+  const send = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+    if (method === "WebAuthn.addCredential") injected = (params?.credential as {signCount:number}).signCount;
     if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "test" };
     if (method === "WebAuthn.disable" && options.recover !== false) location.href = "https://onevu.vanderbilt.edu/app/UserHome";
-    if (method === "WebAuthn.getCredentials") return { credentials: [{ credentialId: passkey.credentialId, signCount: location.pathname === "/app/UserHome" ? 7 : 5 }] };
+    if (method === "WebAuthn.getCredentials") return { credentials: [{ credentialId: passkey.credentialId, signCount: location.pathname === "/app/UserHome" ? injected + 1 : injected }] };
     if (method === "Storage.getCookies") return { cookies: [{ name: "idx", value: "synthetic", domain: "onevu.vanderbilt.edu" }] };
     return {};
   });
-  vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async (expr) => runInNewContext(expr, { location, document }) }));
+  const CredentialsContainer = options.guarded ? { prototype: { get(options: unknown) { const opensDialog = Boolean(options); const dismissed = () => null; return opensDialog ? dismissed() : null; } } } : undefined;
+  vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async (expr) => runInNewContext(expr, { location, document, CredentialsContainer }) }));
   return send;
 }
 describe("automatic verification without a Verify control", () => {
   const options = { cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, requireAssertion: true, stepMs: 1000, timeoutMs: 40_000 };
+  it("identifies the observed host WebAuthn guard without retrying or blaming the passkey", async () => {
+    const send = pendingVerification({ guarded: true });
+    const pending = expect(runSsoCeremony(options)).rejects.toMatchObject({ code: "BROWSER_WEBAUTHN_BLOCKED", retryable: false });
+    await vi.runAllTimersAsync(); await pending;
+    expect(send.mock.calls.some(([method]) => method === "Storage.getCookies" || method === "WebAuthn.disable")).toBe(false);
+    expect(send.mock.calls.filter(([method, params]) => method === "Page.navigate" && params?.url !== "about:blank")).toHaveLength(1);
+  });
   it("restarts a pending document, then proves the real assertion before harvest", async () => {
     const send = pendingVerification();
     const pending = expect(runSsoCeremony(options)).resolves.toMatchObject({ passkeyVerified: true });
@@ -70,7 +80,7 @@ describe("automatic verification without a Verify control", () => {
     expect(send.mock.calls.filter(([method]) => method === "WebAuthn.disable")).toHaveLength(1);
     const calls = send.mock.calls.map(([method]) => method);
     const reset = calls.indexOf("WebAuthn.disable");
-    expect(calls.slice(reset - 3, reset + 5)).toEqual(["Page.navigate", "WebAuthn.getCredentials", "WebAuthn.removeVirtualAuthenticator", "WebAuthn.disable", "WebAuthn.enable", "WebAuthn.addVirtualAuthenticator", "WebAuthn.addCredential", "Page.navigate"]);
+    expect(calls.slice(reset - 4, reset + 6)).toEqual(["WebAuthn.setAutomaticPresenceSimulation", "Page.navigate", "WebAuthn.getCredentials", "WebAuthn.removeVirtualAuthenticator", "WebAuthn.disable", "WebAuthn.enable", "WebAuthn.addVirtualAuthenticator", "WebAuthn.addCredential", "WebAuthn.setAutomaticPresenceSimulation", "Page.navigate"]);
     expect(send.mock.calls.findIndex(([m]) => m === "WebAuthn.getCredentials")).toBeLessThan(send.mock.calls.findIndex(([m]) => m === "Storage.getCookies"));
   });
   it("bounds recovery and never harvests a stuck verification", async () => {
@@ -85,5 +95,30 @@ describe("automatic verification without a Verify control", () => {
     const pending = expect(runSsoCeremony(options)).rejects.toMatchObject({ code: "OKTA_FLOW_CHANGED" });
     await vi.runAllTimersAsync(); await pending;
     expect(send.mock.calls.some(([m]) => m === "WebAuthn.disable")).toBe(false);
+  });
+});
+
+describe("SP assertion metadata", () => {
+  it.each([5, 6])("reports only an observed increment (%s), without isolated proof", async (count) => {
+    setup("https://portal.example/dashboard/Default.aspx", count);
+    const pending = runSsoCeremony({ cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, loginUrl: "https://portal.example/" });
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.passkeyVerified).toBeUndefined();
+    expect(result.assertedSignCount).toBe(count > 5 ? count : undefined);
+  });
+});
+
+describe("SP redirect completion", () => {
+  it("waits through a federation bridge instead of returning it as authenticated SP", async () => {
+    setup("https://bridge.example/saml", 6);
+    vi.mocked(withCdpTab).mockImplementation(async (_url, _start, fn) => {
+      let probes = 0;
+      const send = vi.fn(async (method: string) => method === "WebAuthn.addVirtualAuthenticator" ? { authenticatorId: "test" } : method === "WebAuthn.getCredentials" ? { credentials: [{ credentialId: passkey.credentialId, signCount: 6 }] } : method === "Storage.getCookies" ? { cookies: [] } : {});
+      return fn({ tabId: "test", send: send as CdpTab["send"], evaluate: async () => ({ url: ++probes === 1 ? "https://bridge.example/saml" : "https://portal.example/dashboard/Default.aspx", identifier: false, webauthn: false, error: "" }) });
+    });
+    const pending = runSsoCeremony({ cdpUrl: "http://127.0.0.1:18800", email: "synthetic@vanderbilt.edu", passkey, loginUrl: "https://portal.example/", successOrigin: "https://portal.example" });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toMatchObject({ finalUrl: "https://portal.example/dashboard/Default.aspx", assertedSignCount: 6 });
   });
 });
