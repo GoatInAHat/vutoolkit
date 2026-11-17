@@ -156,7 +156,7 @@
       "state": "generated"
     },
     "hosts/browser/package.json": {
-      "sha256": "24d3818a28736d0883b35bcd2934a439b4f2120660920f949af039c355498e68",
+      "sha256": "9f27117d6539efc0244be88fddce52ff90b65bec48f5b6fc3f1c3048c6967d5a",
       "state": "generated",
       "keys": [
         "name",
@@ -243,7 +243,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "c6a58393015e83a85917b420ae2ee32f5c383cb1266702ba45dd803685a64d80",
+      "sha256": "72b5fd9fdf39aab4e1375637379aea990759723ca80e98228c23db9d64571ebf",
       "state": "generated",
       "keys": [
         "id",
@@ -262,7 +262,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "6055284e40763bc2f0e0c90f6539c3e6aa267397c66b563df4458efda014fbc6",
+      "sha256": "8a888e0862eabc60ba626828e3c1693bb46383afbe1663395a9e14d93c83a8d3",
       "state": "generated",
       "keys": [
         "name",
@@ -318,7 +318,7 @@
       "state": "generated"
     },
     "package.json": {
-      "sha256": "72459127b85734d80253fd072b5c225eef9fe84885180846d9c6b2a0073341b9",
+      "sha256": "a943ecee1d5d85c87290dfbf6c5af87e1a530641c05a90aa48c9d0b8dc6c129d",
       "state": "generated",
       "keys": [
         "name",
@@ -334,7 +334,7 @@
       ]
     },
     "README.md": {
-      "sha256": "2c2db7a6fcacd4d15215d103f313f1b4ad8ba27c02bd01ea78c6c3c131dc30de",
+      "sha256": "82b2ec9904e4dda8dd81dd61812d9e9dc18c3ea8a5102ac8bf2a82fea16aca30",
       "state": "generated",
       "regions": [
         {
@@ -368,7 +368,7 @@
       ]
     },
     "src/toolfactory/cli.ts": {
-      "sha256": "185bdfb5840e48d4b9aa03a3dd83ec7478e5821c5502b399868e225901426589",
+      "sha256": "2002e0cf235fcc1681aead042147604b56a762a4ec26cd843c587d18dc384490",
       "state": "generated"
     },
     "src/toolfactory/config.ts": {
@@ -376,7 +376,7 @@
       "state": "generated"
     },
     "src/toolfactory/mcp.ts": {
-      "sha256": "365c92b69c947e5125fd379c6b36e95460501070fc4c2934872c93d6cca3d43e",
+      "sha256": "4033f7b9d924fe02946d487a70563cbd7210f1256e2300c6b6ce491edbd2b6dd",
       "state": "generated"
     },
     "src/toolfactory/types.ts": {
@@ -440,7 +440,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "2bb27a423fc7905f3150e999afd2b0c78138d2a83063457878442f5ac179f4d3",
+      "sha256": "3efb45802a9e5d662c9d331057f461d88c7c79138f21aae27c9c16024626e592",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

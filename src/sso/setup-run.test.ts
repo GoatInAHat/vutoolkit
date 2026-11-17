@@ -65,6 +65,35 @@ describe("setup.run", () => {
     await expect(runSetup(dir(), { confirm: true }, h.deps)).rejects.toMatchObject({ code: "OKTA_REJECTED", message: expect.stringContaining('("Unable to sign in")') });
   });
 
+  it("treats Okta's push-pending hint as waiting, not a rejection", async () => {
+    const h = harness({ password: "synthetic-password" });
+    let probes = 0;
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, evaluate: (async (expression: string) => {
+      if (expression.includes("const body =") && probes++ < 2) return { url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", security: false,
+        identifier: false, password: false, challenge: true, error: true,
+        errorText: "Haven't received a push notification yet? Try opening the Okta Verify App on your phone." };
+      if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/account-settings/security", security: true,
+        identifier: false, password: false, challenge: false, error: false };
+      return tab.evaluate(expression);
+    }) as CdpTab["evaluate"] }))) as RunDeps["tab"];
+    const result = await runSetup(dir(), { confirm: true }, h.deps);
+    expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
+  });
+
+  it("re-attaches the virtual authenticator when a navigation drops it before enrollment", async () => {
+    const h = harness();
+    let failures = 0;
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, send: (async (method: string, params?: Record<string, unknown>) => {
+      if (method === "WebAuthn.getCredentials" && failures++ < 2) throw new Error("ceremony: WebAuthn.getCredentials failed: Could not find a Virtual Authenticator matching the ID");
+      return tab.send(method, params);
+    }) as CdpTab["send"] }))) as RunDeps["tab"];
+    const result = await runSetup(dir(), { confirm: true }, h.deps);
+    expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
+    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(3);
+  });
+
   it("requires account-holder authorization and configured identity", async () => {
     const h = harness();
     await expect(runSetup(dir(), { confirm: false }, h.deps)).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });

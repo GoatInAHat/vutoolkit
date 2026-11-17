@@ -40,6 +40,9 @@ export const SELECT_PUSH = `(() => {
 })()`;
 /** At most this many chooser clicks per setup step (select, then send), so a stalled page cannot spam the phone. */
 export const MAX_FACTOR_CLICKS = 3;
+export const MAX_AUTHENTICATOR_RESETS = 10;
+/** Okta's hint while a push is pending; it shares the error container but is not a rejection. */
+export const PUSH_WAIT_HINT = /haven.t received a push|try opening the okta verify|push notification sent|resend push/i;
 const SECRET_NAME = "VANDERBILT_PASSKEY";
 const PENDING_SECRET_NAME = "VANDERBILT_PASSKEY_PENDING";
 const PREVIOUS_SECRET_NAME = "VANDERBILT_PASSKEY_PREVIOUS";
@@ -298,7 +301,8 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
   return (deps.tab ?? withCdpTab)(browser.cdpUrl, SETTINGS_URL, async (tab) => {
     const initial = await waitForPage(tab, deps, expectedEmail);
     if (!initial.authenticated || !initial.identityMatched || !initial.enrollmentAvailable) throw new SetupError("SIGN_IN_REQUIRED", "Use setup.prepare and complete sign-in in the managed browser. The configured account identity must be visibly verified before enrollment; no enrollment was attempted.");
-    const authenticatorId = await authenticator(tab);
+    let authenticatorId = await authenticator(tab);
+    let authenticatorResets = 0;
     let staged = false;
     let enrollmentSubmitted = false;
     let serialized: string | undefined;
@@ -316,7 +320,19 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
       const deadline = now() + (options.timeoutSeconds ?? 120) * 1000;
       while (now() < deadline) {
         await (deps.wait ?? sleep)(1000);
-        const result = await tab.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
+        let result: { credentials: Array<VaultPasskey> };
+        try {
+          result = await tab.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
+        } catch (error) {
+          // A cross-document navigation (OneVU's step-up and enrollment pages) can swap the
+          // renderer and drop the virtual authenticator. Before any credential exists, attach a
+          // fresh one so the enrollment page still finds it; afterwards, keep the staged copy.
+          if (staged || authenticatorResets >= MAX_AUTHENTICATOR_RESETS) throw error;
+          authenticatorResets++;
+          await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+          authenticatorId = await authenticator(tab).catch(() => authenticatorId);
+          continue;
+        }
         if (!staged && result.credentials.length > 0) {
           if (result.credentials.length !== 1) throw new SetupError("AMBIGUOUS_CREDENTIAL", "Enrollment produced multiple credentials; no entry was overwritten.");
           const material = validateCredential(result.credentials[0]!);

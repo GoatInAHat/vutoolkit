@@ -85,7 +85,10 @@ export async function withCdpTab<T>(
         pending.set(id, {
           settle: (m) => {
             clearTimeout(timer);
-            if (m.error) rej(new Error("ceremony: " + method + " failed"));
+            if (m.error) {
+              const detail = typeof (m.error as { message?: unknown }).message === "string" ? String((m.error as { message: string }).message).slice(0, 160) : "";
+              rej(new Error("ceremony: " + method + " failed" + (detail ? ": " + detail : "")));
+            }
             else res(m.result as R);
           },
           fail: (e) => { clearTimeout(timer); rej(e); },

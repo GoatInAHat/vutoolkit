@@ -4,6 +4,13 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.5.2
+
+- Keep waiting while Okta shows its "Haven't received a push notification yet?" hint; it sits in the form's error container but is not a rejection, and `setup.run` used to stop there with `OKTA_REJECTED` while the push was still pending.
+- Re-attach the virtual authenticator when OneVU's step-up or enrollment navigation drops it, before any credential exists, instead of failing enrollment with `WebAuthn.getCredentials failed`.
+- `OKTA_REJECTED` now quotes OneVU's own error text (emails redacted), and CDP failures include the protocol's error message.
+- Railway kit: `VUTOOLKIT_DEBUG_BROWSER=1` also logs each OneVU page's headings, controls and form error, never field values.
+
 ## 0.5.1
 
 - Fix `setup.run` stalling on OneVU's "Verify it's you with a security method" chooser: it now picks Okta Verify's push (at most three clicks, only when interactive verification is allowed), so the holder gets a push to approve instead of a silent five-minute wait. The same applies to a step-up during passkey enrollment.

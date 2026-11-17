@@ -4,7 +4,7 @@ import { sessionStore } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, withCdpTab, type CdpTab } from "./cdp-driver.js";
 import { type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, ensureSession, parseVaultPasskey } from "./ensure.js";
-import { enrollSetup, MAX_FACTOR_CLICKS, SELECT_PUSH, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
+import { enrollSetup, MAX_FACTOR_CLICKS, PUSH_WAIT_HINT, SELECT_PUSH, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { AuthError } from "./errors.js";
 
@@ -103,7 +103,7 @@ async function driveSignIn(tab: CdpTab, email: string, options: Required<RunOpti
       }
       throw new SetupError("BROWSER_FLOW_CHANGED", "The setup tab left OneVU; no credentials were entered on that page.");
     }
-    if (page.error) throw new SetupError("OKTA_REJECTED", `OneVU rejected the sign-in${page.errorText ? ` ("${page.errorText}")` : ""}. Verify this account's login prerequisites without repeating MFA blindly.`);
+    if (page.error && !PUSH_WAIT_HINT.test(page.errorText ?? "")) throw new SetupError("OKTA_REJECTED", `OneVU rejected the sign-in${page.errorText ? ` ("${page.errorText}")` : ""}. Verify this account's login prerequisites without repeating MFA blindly.`);
     sawChallenge ||= page.challenge;
     if (!options.allowInteractiveVerification) {
       // In particular, do not submit a password here: doing so may itself send a phone push.
