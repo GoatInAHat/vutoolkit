@@ -1,3 +1,4 @@
+import { checkAuthAbort } from "./budget.js";
 /** OneVU's real self-service enrollment, with credential material confined to CDP and the vault. */
 import { execFileSync } from "node:child_process";
 import { createPrivateKey } from "node:crypto";
@@ -138,7 +139,13 @@ export function configureIdentity(options: { email?: string; vunetId?: string },
     throw new SetupError("EXISTING_ACCOUNT", "An existing passkey is bound to this configured account. Setup will not replace its identity.");
   const write = deps.write ?? writeVault;
   write("VANDERBILT_EMAIL", email);
-  if (vunetId) write("VANDERBILT_VUNETID", vunetId);
+  if (readOptional("VANDERBILT_EMAIL", deps) !== email)
+    throw new SetupError("VAULT_VERIFY_FAILED", "The configured email could not be confirmed in the host vault; no identity was changed.");
+  if (vunetId) {
+    write("VANDERBILT_VUNETID", vunetId);
+    if (readOptional("VANDERBILT_VUNETID", deps) !== vunetId)
+      throw new SetupError("VAULT_VERIFY_FAILED", "The configured VUnetID could not be confirmed in the host vault; the email was written but VUnetID was not confirmed.");
+  }
   return { identityConfigured: true, emailConfigured: true, vunetIdConfigured: Boolean(vunetId || auth.vunetId), emailDerivedFromVunetId: !options.email };
 }
 
@@ -183,10 +190,12 @@ const PAGE_PROBE = (email: string, verifyIdentity = true) => `(async () => {
 })()`;
 
 async function authenticator(tab: CdpTab, passkey?: VaultPasskey): Promise<string> {
+  checkAuthAbort();
   await tab.send("WebAuthn.enable");
   const created = await tab.send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
     options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
   });
+  checkAuthAbort();
   if (passkey) await tab.send("WebAuthn.addCredential", {
     authenticatorId: created.authenticatorId,
     credential: { ...passkey, credentialId: toCdpB64(passkey.credentialId), privateKey: toCdpB64(passkey.privateKey), userHandle: toCdpB64(passkey.userHandle), isResidentCredential: passkey.isResidentCredential ?? false },
@@ -230,7 +239,9 @@ export async function prepareSetup(options: { keepTab?: boolean; recovery?: bool
             ? "Recovery mode is ready. The rejected toolkit key was not loaded. Confirm the account identity and explicitly authorize creating a replacement key."
             : "Recovery mode is open without loading the rejected key. In the OpenClaw Control UI, open the Browser panel, select the openclaw profile and this OneVU setup tab, then sign in there using your usual Vanderbilt method. Return here when complete; never send passwords or verification codes in chat. Confirm the page shows the configured account."
           : auth.passkey
-          ? "The existing toolkit passkey was made available to this dedicated sign-in tab. It may still be rejected by OneVU; if so, choose explicit recovery."
+          ? page.authenticated && page.identityMatched && page.enrollmentAvailable
+            ? "The existing toolkit passkey was made available to this dedicated sign-in tab. It may still be rejected by OneVU; if so, choose explicit recovery."
+            : `In the OpenClaw Control UI, open the Browser panel, select the openclaw profile and this OneVU setup tab, then sign in there using your usual Vanderbilt method. A separate browser login will not be shared with the toolkit. Never send passwords or verification codes in chat. Confirm the page shows this configured student's account${page.identityMatched ? "" : "; the configured email was not visible to verify identity, so do not enroll until the account identity can be confirmed"}. Return here and run setup.prepare again. The existing toolkit passkey is unchanged.`
           : page.authenticated && page.enrollmentAvailable
             ? "OneVU is ready. Explicitly confirm setup.enroll to create and vault the toolkit passkey."
             : `In the OpenClaw Control UI, open the Browser panel, select the openclaw profile and this OneVU setup tab, then sign in there using your usual Vanderbilt method. A separate browser login will not be shared with the toolkit. Never send passwords or verification codes in chat. Confirm the page shows this configured student's account${page.identityMatched ? "" : "; the configured email was not visible to verify identity, so do not enroll until the account identity can be confirmed"}. Return here and run setup.prepare again.`,

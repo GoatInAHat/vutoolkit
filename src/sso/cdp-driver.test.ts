@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { harvestCookies, withCdpTab } from "./cdp-driver.js";
+import { augmentNoProxy, harvestCookies, withCdpTab } from "./cdp-driver.js";
 
 const sent: Array<{ id: number; method: string; params: Record<string, unknown>; sessionId?: string }> = [];
 let failedMethod: string | undefined;
@@ -29,6 +29,25 @@ function setup() {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ "Protocol-Version": "1.3", webSocketDebuggerUrl: "ws://127.0.0.1:18800/devtools/browser/synthetic" })));
 }
 afterEach(() => vi.unstubAllGlobals());
+describe("loopback proxy bypass", () => {
+  it("adds loopback to NO_PROXY without dropping egress proxy entries or duplicates", () => {
+    const env: NodeJS.ProcessEnv = { NO_PROXY: "internal.example.test,10.0.0.0/8", no_proxy: "127.0.0.1" };
+    augmentNoProxy(env);
+    expect(env.NO_PROXY).toBe("internal.example.test,10.0.0.0/8,127.0.0.1,localhost");
+    // Already-present loopback is not duplicated.
+    expect(env.no_proxy).toBe("127.0.0.1");
+    augmentNoProxy(env);
+    expect(env.NO_PROXY).toBe("internal.example.test,10.0.0.0/8,127.0.0.1,localhost");
+  });
+  it("creates NO_PROXY when the host sets none, and keeps an egress proxy untouched", () => {
+    const env: NodeJS.ProcessEnv = { HTTPS_PROXY: "http://proxy.example.test:3128" };
+    augmentNoProxy(env);
+    expect(env.NO_PROXY).toBe("127.0.0.1,localhost");
+    expect(env.no_proxy).toBe("127.0.0.1,localhost");
+    expect(env.HTTPS_PROXY).toBe("http://proxy.example.test:3128");
+  });
+});
+
 describe("isolated CDP tabs", () => {
   it("creates a fresh context, routes page commands and reads only that context's cookies", async () => {
     setup();

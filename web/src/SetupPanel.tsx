@@ -4,7 +4,7 @@ type SetupStatus = { readyForAuth?: boolean; identityConfigured?: boolean; passk
 export type SetupCall = (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
 /** Setup runs in one deterministic operation; the UI collects identity and consent, not login steps. */
-export function SetupPanel({ call }: { call: SetupCall }) {
+export function SetupPanel({ call, onConnected }: { call: SetupCall; onConnected?: () => void }) {
   const [status, setStatus] = useState<SetupStatus>();
   const [identity, setIdentity] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -53,6 +53,7 @@ export function SetupPanel({ call }: { call: SetupCall }) {
       setRecovery(false);
       await check();
       setConnected(result.status === "ready");
+      if (result.status === "ready") onConnected?.();
       setNotice(result.status === "ready"
         ? "Vanderbilt setup completed and the connection was verified. Your toolkit passkey is stored securely."
         : String(result.nextStep || "Setup returned without verified completion. Check its result before retrying."));

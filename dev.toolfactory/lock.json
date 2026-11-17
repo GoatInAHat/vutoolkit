@@ -102,11 +102,11 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "c7412596de14508f59446a49d9ee9e1b88e74517c2e7dbb2709c93655970baec",
+      "sha256": "316fb2800f3552b4c7099bfd205a8862e52b6ed884afc4483e523145f5da4f4a",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
-      "sha256": "12edc0a8bc419240fbcaaa126535662fee8c7e6d59288f3cc5ac396b99b80881",
+      "sha256": "6b1b1aa9f6ed8257984d431d413f0c3ae85a0adea7fff7356dfa8f54032d2376",
       "state": "generated"
     },
     "dev.toolfactory/inspector.json": {
@@ -133,13 +133,7 @@
     },
     "hosts/browser/entrypoints/example.content.ts": {
       "sha256": "af0ccf8dfdf49ee3740375b4eccd955a78decdfb227d31295b06b44be6bb8237",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:content",
-          "end": "// /tf:content"
-        }
-      ]
+      "state": "manual"
     },
     "hosts/browser/entrypoints/options/index.html": {
       "sha256": "62208a37ef5e3ba119d4db24bb71dee21c007df1aace73b263cb0e2f4b95f8fd",
@@ -199,11 +193,11 @@
       "state": "generated"
     },
     "hosts/browser/TARGETS.md": {
-      "sha256": "9978bd2a47f9808c586ac51dcfd16fb848fef4f034ac74073af57706641ccd17",
+      "sha256": "182733c52071f72a9edee4530880b2e3e5573b912f284496b76f8cbad5bdbc2f",
       "state": "generated"
     },
     "hosts/browser/tests/background.test.ts": {
-      "sha256": "01475e61d73547ffcedd2bba67c476251687fd492f6d97dda5e053ce60f7b1f3",
+      "sha256": "3446f0841ce4115b1b87114a2f070c0e3ed1e7cd7e0ae36486a09b4e66778a61",
       "state": "generated"
     },
     "hosts/browser/tests/smoke.mjs": {
@@ -249,7 +243,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "c84c6daef708d5b638a8c4f1d62002e2752cc6b13b28423d96679e421dbccf16",
+      "sha256": "f45000e238c505b7c96343352f741cce022f8b4c3e0e15c13b10c960e31f9077",
       "state": "generated",
       "keys": [
         "id",
@@ -268,7 +262,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "89aec17b4cb18e823dc1012657af6e9507652de5d69ac768e3030636714e60c3",
+      "sha256": "e6541078a773a120f80ff40fb57c654b32a4f67a91bb3faf94546ff98d238a8a",
       "state": "generated",
       "keys": [
         "name",
@@ -300,26 +294,20 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "1b136a317a7fe8d84c690b7fc318262fa33ae635ba4681c66058f77c693ff9a4",
+      "sha256": "a08a9cac5e3dd4b621f9c01245be1f05cfd498697a57c6a728818855c4ca8de5",
       "state": "generated"
     },
     "hosts/openclaw/skills/vutoolkit/SKILL.md": {
-      "sha256": "b07c8a985f616fffe6f226f239e124482da0701b3c1d6656cf25dcf5243bbb85",
+      "sha256": "2b9300182a1d62318e10ded904a59fd0b753fea4ac38b3381f6ce631cb48ba67",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
-      "sha256": "5a22a92565c6591dbfe3c338ed0dfbc113a6bec9dbeb1a8b9f0326380249e970",
+      "sha256": "3427c5bfb9ff54e5a64d9d0230ef9997e5667a322ed5c7202d8a45632d7c12e9",
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
-      "sha256": "fc2c6cb309a64f6f2c37aa1699cf7cebede237354f231d5aa88f4cc87df60b9d",
-      "state": "generated",
-      "regions": [
-        {
-          "begin": "// tf:entry",
-          "end": "// /tf:entry"
-        }
-      ]
+      "sha256": "f11ef5122024752359874618c79456e0fd9f804a3472c2d9047e7ca0747a683f",
+      "state": "manual"
     },
     "hosts/openclaw/tsconfig.json": {
       "sha256": "106c946ea50b5c1a334631ad22dbbadcc7d1c19d416d7d02fd8bff0f75b2d603",
@@ -366,7 +354,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "3769ce37d051882f5f010f9218c94e1bb0a9eabe91fe28c3528fe9cfbe7fac15",
+      "sha256": "2f9932f222e12d77b67cd27d1f457dc85a8a7351715a74135b15f3f2e85590f2",
       "state": "generated",
       "regions": [
         {
@@ -452,7 +440,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "acc41eba451bd9740e2fa4f9fb907d27be829656717cde9045022e6b022368fc",
+      "sha256": "aab9d5411d454ac82de5368ece77d3f2d5c650710aeb067b8d8f6e27938a7d0c",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

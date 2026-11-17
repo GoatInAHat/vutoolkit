@@ -23,6 +23,8 @@
   },
   "contracts": {
     "tools": [
+      "vutoolkit_brightspace_api",
+      "vutoolkit_brightspace_fetch",
       "vutoolkit_courses_detail",
       "vutoolkit_courses_search",
       "vutoolkit_courses_sections",

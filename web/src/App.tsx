@@ -396,10 +396,36 @@ const plannerRun = async (name: string, args: Record<string, unknown>) => {
   return result
 }
 
+/** True inside the browser extension (popup or options page); false in the plain web app. */
+function isExtensionContext(): boolean {
+  const globalWithRuntime = globalThis as unknown as {
+    browser?: { runtime?: { id?: string } }
+    chrome?: { runtime?: { id?: string } }
+  }
+  return Boolean(globalWithRuntime.browser?.runtime?.id || globalWithRuntime.chrome?.runtime?.id)
+}
+
+/** `storage.local` when running as the extension; `undefined` for the plain web app/host. */
+function extensionStorage() {
+  const globalWithStorage = globalThis as unknown as { browser?: any; chrome?: any }
+  return globalWithStorage.browser?.storage?.local ?? globalWithStorage.chrome?.storage?.local
+}
+
 export const pages: { id: string; title: string; element: ReactNode }[] = [
   { id: "operations", title: "Operations", element: <OperationsPage /> },
   { id: "planner", title: "Degree planner", element: <PlannerPage run={plannerRun} /> },
-  { id: "setup", title: "Connect Vanderbilt", element: <SetupPanel call={plannerRun} /> },
+  {
+    id: "setup",
+    title: "Connect Vanderbilt",
+    element: (
+      <SetupPanel
+        call={plannerRun}
+        onConnected={() => {
+          if (isExtensionContext()) void extensionStorage()?.set({ onboarded: true })
+        }}
+      />
+    ),
+  },
   // Add your own pages here — e.g. a d3 graph in src/pages/planner.tsx, imported above:
   //   import { PlannerPage } from "./pages/planner"
   //   { id: "planner", title: "Degree planner", element: <PlannerPage /> },
@@ -408,10 +434,27 @@ export const pages: { id: string; title: string; element: ReactNode }[] = [
 export default function App() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"))
   const [active, setActive] = useState(pages[0]?.id ?? "")
+  const [onboarded, setOnboarded] = useState(true)
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
   }, [dark])
+  // Extension-only: a fresh install defaults the popup/options page straight to setup.
+  useEffect(() => {
+    if (!isExtensionContext()) return
+    void extensionStorage()
+      ?.get(["onboarded"])
+      .then((result: { onboarded?: boolean }) => {
+        const done = result?.onboarded === true
+        setOnboarded(done)
+        if (!done) setActive("setup")
+      })
+  }, [])
   const page = pages.find((candidate) => candidate.id === active) ?? pages[0]
+  const showPopupHint =
+    active === "setup" &&
+    isExtensionContext() &&
+    location.pathname.includes("popup.html") &&
+    !onboarded
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -450,7 +493,14 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-6">{page?.element}</main>
+      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-6">
+        {showPopupHint ? (
+          <p className="text-sm text-muted-foreground">
+            Continue in the full page — use Open full page above for the complete guided setup.
+          </p>
+        ) : null}
+        {page?.element}
+      </main>
     </div>
   )
 }

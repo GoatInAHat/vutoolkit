@@ -50,4 +50,16 @@ export const background = defineBackground(() => {
 //   browser.runtime.onMessage.addListener(...)        // your own message types
 //   await route({ type: "mcp", request: { method: "tools/call", params: { name: "…", arguments: {} } } })
 
+/**
+ * Fresh installs land the user straight in options.html's setup flow; updates leave any existing
+ * onboarded flag untouched.
+ */
+export async function handleInstall({ reason }: { reason: string }): Promise<void> {
+  if (reason !== "install") return;
+  await browser.storage.local.set({ onboarded: false });
+  browser.runtime.openOptionsPage();
+}
+
+browser.runtime.onInstalled.addListener(handleInstall);
+
 export default background;
