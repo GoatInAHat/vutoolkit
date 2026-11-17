@@ -132,4 +132,8 @@ function browserLog() {
 }
 
 browserLog();
-autoSetup().catch((error) => log(`auto-setup: crashed: ${error?.message ?? error}`));
+// VUTOOLKIT_DEBUG_WEBAUTHN=1 runs a push-free browser check instead of setup (see webauthn-probe.mjs).
+if (process.env.VUTOOLKIT_DEBUG_WEBAUTHN === "1") {
+  log("auto-setup: skipped while VUTOOLKIT_DEBUG_WEBAUTHN=1.");
+  (await import("./webauthn-probe.mjs")).webauthnProbe().catch((e) => log(`webauthn-probe crashed: ${e?.message ?? e}`));
+} else autoSetup().catch((error) => log(`auto-setup: crashed: ${error?.message ?? error}`));

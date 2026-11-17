@@ -50,3 +50,6 @@ enrolled by this server rather than copying one from another host: two hosts sha
 separate sign counters.
 
 `VUTOOLKIT_DEBUG_BROWSER=1` logs each browser page's origin, path and title as it changes.
+
+`VUTOOLKIT_DEBUG_WEBAUTHN=1` skips setup and instead checks, without any sign-in or push, whether
+Chromium keeps its virtual authenticator across page loads, logging only the outcome of each step.
