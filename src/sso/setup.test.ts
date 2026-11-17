@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { advancePasskeyCounter, configureIdentity, enrollSetup, prepareSetup, setupStatus, type SetupDeps } from "./setup.js";
+import { advancePasskeyCounter, CHOOSE_PASSKEY_METHOD, configureIdentity, enrollSetup, prepareSetup, setupStatus, SUBMIT_PASSKEY_ENROLLMENT, type SetupDeps } from "./setup.js";
 import type { VaultPasskey } from "./ceremony.js";
 import type { CdpTab } from "./cdp-driver.js";
 
@@ -162,6 +162,22 @@ describe("OneVU setup", () => {
     const result = await enrollSetup({ confirm: true, timeoutSeconds: 4 }, h.deps);
     expect(result.status).toBe("stored-awaiting-confirmation");
     expect(continuationClicks).toBe(1);
+  });
+
+  it("picks the passkey row on OneVU's security-method list a bounded number of times before submitting", async () => {
+    const h = harness({ acknowledge: false });
+    let listClicks = 0;
+    let submits = 0;
+    const original = h.evaluate.getMockImplementation()!;
+    h.evaluate.mockImplementation(async (expression: string) => {
+      if (expression === CHOOSE_PASSKEY_METHOD) { listClicks++; return true; }
+      if (expression === SUBMIT_PASSKEY_ENROLLMENT) { submits++; return true; }
+      return original(expression);
+    });
+    await enrollSetup({ confirm: true, timeoutSeconds: 6 }, h.deps);
+    expect(listClicks).toBe(2);
+    expect(submits).toBe(1);
+    expect(CHOOSE_PASSKEY_METHOD).toMatch(/Okta Verify\|Phone\|Email\|Password/);
   });
 
   it("does not promote a new key when staged vault readback is corrupt", async () => {

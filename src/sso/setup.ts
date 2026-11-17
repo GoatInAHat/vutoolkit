@@ -264,6 +264,41 @@ const ENROLL_STATE = `(() => {
   };
 })()`;
 
+const VISIBLE = "const vis = e => !!(e && (e.offsetParent || e.getClientRects().length));";
+const PASSKEY_NAME = "/Security Key or Biometric|Passkey/i";
+
+/**
+ * OneVU's "Set up security methods" list: click the Set up control of the one row naming the
+ * security key / biometric (passkey) method. Refuses when the row is ambiguous or absent, so no
+ * other method is ever chosen.
+ */
+export const CHOOSE_PASSKEY_METHOD = `(() => {
+  ${VISIBLE}
+  if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname.startsWith('/account-settings/')) return false;
+  if (!/Set up security methods/i.test(document.body?.innerText || '')) return false;
+  const label = e => ((e.value || e.innerText || e.textContent || '') + ' ' + (e.getAttribute('aria-label') || '')).trim();
+  const controls = [...document.querySelectorAll('a,button,[role=button],input[type=submit]')].filter(vis).filter(e => /^Set up\\b/i.test(label(e)));
+  const rowOf = b => { for (let n = b.parentElement, i = 0; n && i < 8; n = n.parentElement, i++) {
+    if ([...n.querySelectorAll('a,button,[role=button],input[type=submit]')].filter(vis).filter(e => /^Set up\\b/i.test(label(e))).length > 1) return null;
+    if (/Authenticator|Key|Passkey|Okta Verify|Phone|Email|Password|Question/i.test(n.innerText || '')) return n;
+  } return null; };
+  const picks = controls.filter(b => { const row = rowOf(b); return row && ${PASSKEY_NAME}.test(row.innerText || '') && !/Okta Verify|Phone|Email|Password|Security Question/i.test(row.innerText || ''); });
+  if (picks.length !== 1) return false; picks[0].click(); return true;
+})()`;
+
+/** The passkey enrollment screen itself: one Set up / Enroll / Register / Continue / Create submit. */
+export const SUBMIT_PASSKEY_ENROLLMENT = `(() => {
+  ${VISIBLE}
+  if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname.startsWith('/account-settings/')) return false;
+  const text = document.body?.innerText || '';
+  const heading = document.querySelector('[data-se="o-form-head"]')?.textContent || '';
+  if (/Set up security methods/i.test(text)) return false;
+  if (!${PASSKEY_NAME}.test(heading) && !/Set up (a |your )?(security key or biometric|passkey)/i.test(text)) return false;
+  const choices = [...document.querySelectorAll('input[type="submit"],button')].filter(vis)
+    .filter(e => /^(Set up|Enroll|Register|Continue|Create)$/i.test((e.value || e.textContent || '').trim()));
+  if (choices.length !== 1) return false; choices[0].click(); return true;
+})()`;
+
 async function authenticator(tab: Pick<CdpTab, "send">, passkey?: VaultPasskey): Promise<string> {
   checkAuthAbort();
   await tab.send("WebAuthn.enable");
@@ -355,6 +390,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     let enrollmentSubmitted = false;
     let serialized: string | undefined;
     let factorClicks = 0;
+    let listClicks = 0;
     try {
       await tab.send("Page.navigate", { url: SETTINGS_URL });
       const initial = await waitForPage(tab, deps, expectedEmail);
@@ -437,15 +473,10 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
         // OneVU may step up before issuing a new authenticator; its chooser waits on a selection.
         if (options.allowInteractiveVerification !== false && factorClicks < MAX_FACTOR_CLICKS
           && await tab.evaluate(SELECT_PUSH).catch(() => false)) { factorClicks++; continue; }
+        // After a step-up OneVU may list the security methods to set up; pick only the passkey row.
+        if (!enrollmentSubmitted && listClicks < 2 && await tab.evaluate(CHOOSE_PASSKEY_METHOD).catch(() => false) === true) { listClicks++; continue; }
         // Only a single enrollment-screen submit is eligible; never select a different factor.
-        if (!enrollmentSubmitted && await tab.evaluate(`(() => {
-          if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname.startsWith('/account-settings/')) return false;
-          const heading = document.querySelector('[data-se="o-form-head"]')?.textContent || '';
-          if (!/Security Key or Biometric|Passkey/i.test(heading)) return false;
-          const choices = [...document.querySelectorAll('input[type="submit"],button[type="submit"]')]
-            .filter(e => /^(Set up|Enroll|Register|Continue|Create)$/i.test((e.value || e.textContent || '').trim()));
-          if (choices.length !== 1) return false; choices[0].click(); return true;
-        })()`).catch(() => false) === true) enrollmentSubmitted = true;
+        if (!enrollmentSubmitted && await tab.evaluate(SUBMIT_PASSKEY_ENROLLMENT).catch(() => false) === true) enrollmentSubmitted = true;
       }
       if (staged) return { status: "stored-awaiting-confirmation" as const, secretName: PENDING_SECRET_NAME, serverConfirmed: false, existingPasskeysRevoked: false };
       throw new SetupError("ENROLLMENT_INCOMPLETE", `OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup. Last page: ${lastState.slice(0, 600)}`);
