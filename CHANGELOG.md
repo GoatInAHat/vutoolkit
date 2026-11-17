@@ -8,6 +8,7 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 - Keep waiting while Okta shows its "Haven't received a push notification yet?" hint; it sits in the form's error container but is not a rejection, and `setup.run` used to stop there with `OKTA_REJECTED` while the push was still pending.
 - Fix passkey enrollment failing with `WebAuthn.getCredentials failed: The Virtual Authenticator Environment has not been enabled`. Chromium keeps one WebAuthn environment per frame and switches it off whenever any DevTools session on that frame disconnects; the Railway kit's page logger did exactly that every three seconds. Enrollment now switches the authenticator back on through its own session if it is lost before a credential exists, keeps a staged credential through a later loss, and reports `AUTHENTICATOR_LOST` only when it keeps disappearing.
+- A stalled enrollment now ends with `ENROLLMENT_INCOMPLETE` inside the whole-call budget, naming the page it stopped on and the shape of any WebAuthn request OneVU made (never challenges or key material); `VUTOOLKIT_SETUP_TRACE=1` logs each change as it happens.
 - `OKTA_REJECTED` now quotes OneVU's own error text (emails redacted), and CDP failures include the protocol's error message.
 - Railway kit: `VUTOOLKIT_DEBUG_BROWSER=1` only reads the browser's target list and never attaches to a page.
 

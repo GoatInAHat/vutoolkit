@@ -223,6 +223,47 @@ const PAGE_PROBE = (email: string, verifyIdentity = true) => `(async () => {
   };
 })()`;
 
+/**
+ * Records, per OneVU tab, the shape of each WebAuthn request the page makes and how it settled,
+ * in sessionStorage so it survives same-origin page loads. Never records challenges, user or key
+ * material. Installed for enrollment only, so a stalled enrollment can say what OneVU asked for.
+ */
+const WEBAUTHN_RECORDER = `(() => { try {
+  if (location.origin !== 'https://onevu.vanderbilt.edu' || window.top !== window || !navigator.credentials || navigator.credentials.__vt) return;
+  const KEY = '__vt_webauthn';
+  const save = (fn) => { try { const all = JSON.parse(sessionStorage.getItem(KEY) || '[]'); fn(all); sessionStorage.setItem(KEY, JSON.stringify(all.slice(-6))); } catch {} };
+  for (const kind of ['create', 'get']) {
+    const original = navigator.credentials[kind].bind(navigator.credentials);
+    navigator.credentials[kind] = function (options) {
+      const pk = (options && options.publicKey) || {}; const sel = pk.authenticatorSelection || {};
+      const id = Math.random().toString(36).slice(2, 8);
+      save(all => all.push({ id, kind, mediation: (options && options.mediation) || '', attachment: sel.authenticatorAttachment || '',
+        residentKey: sel.residentKey || (sel.requireResidentKey ? 'required' : ''), uv: sel.userVerification || pk.userVerification || '',
+        attestation: pk.attestation || '', algs: (pk.pubKeyCredParams || []).map(p => p.alg), allow: (pk.allowCredentials || []).length,
+        exclude: (pk.excludeCredentials || []).length, hints: pk.hints || [], outcome: 'pending' }));
+      const settle = (outcome) => save(all => { const e = all.find(x => x.id === id); if (e) e.outcome = outcome; });
+      return original(options).then(value => { settle('ok'); return value; }, error => { settle('error:' + (error && error.name)); throw error; });
+    };
+  }
+  navigator.credentials.__vt = true;
+} catch {} })()`;
+
+/** Where enrollment stands, for a stalled run: path, heading, visible controls, form error, WebAuthn requests. Emails redacted, field values never read. */
+const ENROLL_STATE = `(() => {
+  const vis = e => !!(e && (e.offsetParent || e.getClientRects().length));
+  const red = s => String(s || '').replace(/[^\\s@]+@[^\\s@]+/g, '<email>').replace(/\\s+/g, ' ').trim();
+  let webauthn = []; try { webauthn = JSON.parse(sessionStorage.getItem('__vt_webauthn') || '[]').map(({ id, ...rest }) => rest); } catch {}
+  return {
+    path: location.origin === 'https://onevu.vanderbilt.edu' ? location.pathname : location.origin,
+    heading: red(document.querySelector('[data-se="o-form-head"],h1,h2')?.textContent).slice(0, 80),
+    controls: [...document.querySelectorAll('button,input[type=submit],[data-se=button]')].filter(vis)
+      .map(e => red(e.value || e.innerText || e.getAttribute('aria-label')).slice(0, 30)).filter(Boolean).slice(0, 6),
+    error: red(document.querySelector('.o-form-error-container,.okta-form-infobox-error,[role=alert]')?.textContent).slice(0, 120),
+    text: red(document.body?.innerText).slice(0, 160),
+    webauthn,
+  };
+})()`;
+
 async function authenticator(tab: Pick<CdpTab, "send">, passkey?: VaultPasskey): Promise<string> {
   checkAuthAbort();
   await tab.send("WebAuthn.enable");
@@ -306,6 +347,9 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     await tab.send("Page.navigate", { url: "about:blank" });
     for (let n = 0; n < 20 && await tab.evaluate("location.href").catch(() => null) !== "about:blank"; n++) await (deps.wait ?? sleep)(250);
     let authenticatorId = await authenticator(tab);
+    const recorder = await tab.send<{ identifier?: string }>("Page.addScriptToEvaluateOnNewDocument", { source: WEBAUTHN_RECORDER }).catch(() => undefined);
+    const env = deps.env ?? process.env;
+    let lastState = "";
     let authenticatorResets = 0;
     let staged = false;
     let enrollmentSubmitted = false;
@@ -361,6 +405,11 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
             throw new SetupError("VAULT_VERIFY_FAILED", "Vault readback did not confirm the new credential. The existing entry was not changed.");
           staged = true;
         }
+        const state = JSON.stringify(await tab.evaluate(ENROLL_STATE).catch(() => null));
+        if (state !== lastState) {
+          lastState = state;
+          if (env.VUTOOLKIT_SETUP_TRACE === "1") console.error(`[vutoolkit] setup: ${state}`);
+        }
         const page = await tab.evaluate(PAGE_PROBE(expectedEmail)).catch(() => null) as SecurityPage | null;
         if (staged && serialized && page?.authenticated && page.identityMatched && page.enrolledCount > initial.enrolledCount) {
           const write = deps.write ?? writeVault;
@@ -399,9 +448,10 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
         })()`).catch(() => false) === true) enrollmentSubmitted = true;
       }
       if (staged) return { status: "stored-awaiting-confirmation" as const, secretName: PENDING_SECRET_NAME, serverConfirmed: false, existingPasskeysRevoked: false };
-      throw new SetupError("ENROLLMENT_INCOMPLETE", "OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup.");
+      throw new SetupError("ENROLLMENT_INCOMPLETE", `OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup. Last page: ${lastState.slice(0, 600)}`);
     } finally {
       await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+      if (recorder?.identifier) await tab.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: recorder.identifier }).catch(() => {});
     }
   }, { keepOpen: true });
 }

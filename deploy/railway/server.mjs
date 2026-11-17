@@ -68,7 +68,7 @@ async function autoSetup() {
   save();
   log(`auto-setup: attempt ${state.attempts}. Approve the Okta Verify push for Vanderbilt on your phone.`);
   try {
-    const result = await op("setup.run").handler({ confirm: true, recovery: false, allowInteractiveVerification: true, timeoutSeconds: 300 }, ctx);
+    const result = await op("setup.run").handler({ confirm: true, recovery: false, allowInteractiveVerification: true, timeoutSeconds: 420 }, ctx);
     state.result = `${result.status}/${result.passkey}`;
     save();
     log(`auto-setup: done (${result.status}, passkey ${result.passkey}, Microsoft ${result.microsoftSession}).`);

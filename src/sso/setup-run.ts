@@ -175,6 +175,7 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
   };
   const email = identity(deps);
   const env = deps.env ?? process.env;
+  const startedAt = (deps.now ?? Date.now)();
   const existing = env.VUTOOLKIT_PASSKEY_JSON || vaultValue("VANDERBILT_PASSKEY", deps);
   const pending = vaultValue("VANDERBILT_PASSKEY_PENDING", deps);
   if (existing) {
@@ -231,7 +232,9 @@ async function runOnce(dataDir: string, raw: RunOptions, deps: RunDeps) {
 
   const enrollmentDeps: RunDeps = { ...deps, env: { ...env, VUTOOLKIT_VU_EMAIL: email, VUTOOLKIT_CDP_URL: cdpUrl }, browserReady: async () => {} };
   const enrolled = await enrollSetup({ confirm: true, replaceExisting: options.recovery,
-    timeoutSeconds: options.timeoutSeconds, allowInteractiveVerification: options.allowInteractiveVerification }, enrollmentDeps);
+    // Leave room inside the whole-call budget so a stalled enrollment reports where it stopped.
+    timeoutSeconds: Math.max(30, Math.floor(options.timeoutSeconds - ((deps.now ?? Date.now)() - startedAt) / 1000) - 20),
+    allowInteractiveVerification: options.allowInteractiveVerification }, enrollmentDeps);
   if (enrolled.status !== "enrolled" || !enrolled.serverConfirmed)
     throw new SetupError("ENROLLMENT_UNCONFIRMED", "OneVU has not acknowledged the new passkey. A pending key may be staged in the host vault; no cookie-only setup was declared successful.");
   const promoted = vaultValue("VANDERBILT_PASSKEY", deps);

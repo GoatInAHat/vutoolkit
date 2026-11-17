@@ -49,6 +49,8 @@ minutes apart, so a missed push never keeps paging your phone; redeploy to try a
 enrolled by this server rather than copying one from another host: two hosts sharing one key keep
 separate sign counters.
 
+`VUTOOLKIT_SETUP_TRACE=1` logs each step of the passkey enrollment page (headings, controls, form
+error, and what kind of WebAuthn request OneVU made; never field values or key material).
 `VUTOOLKIT_DEBUG_BROWSER=1` logs each browser page's origin, path and title as it changes. Do not
 attach other DevTools clients to the setup tab while setup runs: Chromium switches off the tab's
 passkey helper whenever any DevTools session on it disconnects.
