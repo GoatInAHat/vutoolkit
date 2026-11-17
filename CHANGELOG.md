@@ -4,6 +4,11 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.5.1
+
+- Fix `setup.run` stalling on OneVU's "Verify it's you with a security method" chooser: it now picks Okta Verify's push (at most three clicks, only when interactive verification is allowed), so the holder gets a push to approve instead of a silent five-minute wait. The same applies to a step-up during passkey enrollment.
+- Add `deploy/railway/`, a container kit for running vutoolkit as a remote MCP server: headless Chromium with lock recovery, a file-backed stand-in for the `openclaw secrets` CLI on the volume, `sessions.open` withheld over MCP, a `/healthz` route, and an opt-in auto-setup (`VUTOOLKIT_AUTO_SETUP=1`) that runs the one-time passkey enrollment on deploy with no agent involved.
+
 ## 0.4.3
 
 - Handle Microsoft's Vanderbilt federation confirmation during sign-in, with exact-origin and account checks, bounded retries, and live session verification.

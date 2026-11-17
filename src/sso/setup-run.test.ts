@@ -87,6 +87,7 @@ describe("setup.run", () => {
     const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
       if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/login", security: false,
         identifier: stage === 0, password: stage === 1, challenge: stage === 2, error: false };
+      if (expression.includes("push notification")) return false;
       if (expression.includes("return (")) {
         if (expression.includes("input[type=\"password\"]")) return true;
         if (expression.includes("input[name=\"identifier\"]")) return true;
@@ -111,6 +112,7 @@ describe("setup.run", () => {
     const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
       if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/login", security: false,
         identifier: !challenged, password: !challenged, challenge: challenged, error: false };
+      if (expression.includes("push notification")) return false;
       if (expression.includes("input[name=\"identifier\"]',")) { steps.push("identifier"); return true; }
       if (expression.includes("input[type=\"password\"]',")) { steps.push("password"); return true; }
       if (expression.includes("input[type=\"submit\"]")) { steps.push("submit"); challenged = true; return true; }
@@ -119,6 +121,58 @@ describe("setup.run", () => {
     h.deps.tab = (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: (async () => ({})) as CdpTab["send"], evaluate })) as RunDeps["tab"];
     await expect(runSetup(dir(), { confirm: true, timeoutSeconds: 15 }, h.deps)).rejects.toMatchObject({ code: "MFA_REQUIRED" });
     expect(steps).toEqual(["identifier", "password", "submit"]);
+  });
+
+  it("picks the push on OneVU's security-method chooser, then finishes once the holder approves", async () => {
+    const h = harness({ signedIn: false, password: "synthetic-not-real" });
+    let stage: "identifier" | "chooser" | "pushed" | "signed-in" = "identifier";
+    let polls = 0;
+    let picks = 0;
+    let enrollmentStarted = false;
+    const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
+      if (expression.includes("const body =")) {
+        if (stage === "pushed" && ++polls > 3) stage = "signed-in";
+        return { url: stage === "signed-in" ? "https://onevu.vanderbilt.edu/account-settings/security" : "https://onevu.vanderbilt.edu/oauth2/v1/authorize",
+          security: stage === "signed-in", identifier: stage === "identifier", password: false,
+          challenge: stage === "chooser" || stage === "pushed", error: false };
+      }
+      if (expression.includes("push notification")) {
+        if (stage !== "chooser") return false;
+        picks++; stage = "pushed"; return "select";
+      }
+      if (expression.includes("input[name=\"identifier\"]',")) return true;
+      if (expression.includes("input[type=\"submit\"]") && stage === "identifier") { stage = "chooser"; return true; }
+      if (expression.includes("button.click()")) { enrollmentStarted = true; return true; }
+      if (expression.includes("enrolledCount:")) return { authenticated: true, identityMatched: true, enrollmentAvailable: true, enrolledCount: enrollmentStarted ? 2 : 1 };
+      return false;
+    });
+    const send = vi.fn(async (method: string): Promise<unknown> => {
+      if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-authenticator" };
+      if (method === "WebAuthn.getCredentials") return { credentials: enrollmentStarted ? [credential] : [] };
+      return {};
+    });
+    h.deps.tab = (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: send as CdpTab["send"], evaluate })) as RunDeps["tab"];
+    const result = await runSetup(dir(), { confirm: true, timeoutSeconds: 60 }, h.deps);
+    expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
+    expect(picks).toBe(1);
+  });
+
+  it("bounds chooser clicks and never picks a method when interactive verification is off", async () => {
+    const h = harness({ signedIn: false, password: "synthetic-not-real" });
+    let picks = 0;
+    const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
+      if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", security: false,
+        identifier: false, password: false, challenge: true, error: false };
+      if (expression.includes("push notification")) { picks++; return "select"; }
+      return false;
+    });
+    h.deps.tab = (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: (async () => ({})) as CdpTab["send"], evaluate })) as RunDeps["tab"];
+    await expect(runSetup(dir(), { confirm: true, timeoutSeconds: 60 }, h.deps)).rejects.toMatchObject({ code: "MFA_REQUIRED" });
+    expect(picks).toBe(3);
+    picks = 0;
+    await expect(runSetup(dir(), { confirm: true, allowInteractiveVerification: false, timeoutSeconds: 15 }, h.deps))
+      .rejects.toMatchObject({ code: "EXISTING_SESSION_REQUIRED" });
+    expect(picks).toBe(0);
   });
 
   it("does not create a duplicate credential when a prior enrollment is pending", async () => {

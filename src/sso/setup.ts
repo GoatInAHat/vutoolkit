@@ -9,6 +9,37 @@ import type { defaultEnsureBrowser } from "./ensure.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 
 export const SETTINGS_URL = "https://onevu.vanderbilt.edu/account-settings/security";
+
+/**
+ * OneVU's "Verify it's you with a security method" chooser lists Okta Verify's code, its push,
+ * phone and security key, each with its own "Select". Waiting on that page never sends anything,
+ * so interactive setup picks the push row (and, where Okta shows one, its "Send push" button).
+ * Only the row whose own text names a push notification is eligible: a "Select" whose nearest
+ * ancestor already holds a second "Select" belongs to a list, not a row, and is never clicked.
+ * Returns "select", "send" or false. Never runs on the account settings pages.
+ */
+export const SELECT_PUSH = `(() => {
+  if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname.startsWith('/account-settings/')) return false;
+  const vis = e => !!(e && (e.offsetParent || e.getClientRects().length));
+  const label = e => (e.value || e.textContent || '').trim();
+  const selects = [...document.querySelectorAll('[data-se="button"],a,button,input[type="submit"]')].filter(e => vis(e) && /^Select$/i.test(label(e)));
+  const rowOf = b => {
+    for (let n = b.parentElement; n && n !== document.body; n = n.parentElement) {
+      if (selects.filter(s => n.contains(s)).length > 1) return null;
+      if (/push notification/i.test(n.textContent || '')) return n;
+    }
+    return null;
+  };
+  const direct = document.querySelector('[data-se="okta_verify-push"] [data-se="button"]');
+  const pick = vis(direct) ? direct : selects.find(rowOf);
+  if (pick) { pick.click(); return 'select'; }
+  const send = [...document.querySelectorAll('input[type="submit"],button[type="submit"],button,a.button')]
+    .find(e => vis(e) && /^Send push$/i.test(label(e)));
+  if (send) { send.click(); return 'send'; }
+  return false;
+})()`;
+/** At most this many chooser clicks per setup step (select, then send), so a stalled page cannot spam the phone. */
+export const MAX_FACTOR_CLICKS = 3;
 const SECRET_NAME = "VANDERBILT_PASSKEY";
 const PENDING_SECRET_NAME = "VANDERBILT_PASSKEY_PENDING";
 const PREVIOUS_SECRET_NAME = "VANDERBILT_PASSKEY_PREVIOUS";
@@ -271,6 +302,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     let staged = false;
     let enrollmentSubmitted = false;
     let serialized: string | undefined;
+    let factorClicks = 0;
     try {
       const clicked = await tab.evaluate(`(() => {
         if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname !== '/account-settings/security') return false;
@@ -324,6 +356,9 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
           })()`).catch(() => false);
           if (challenge) throw new SetupError("MFA_REQUIRED", "OneVU requested one-time verification during passkey enrollment. No verification factor was clicked. Approve the existing request when awake, then resume setup; the previous key remains available.");
         }
+        // OneVU may step up before issuing a new authenticator; its chooser waits on a selection.
+        if (options.allowInteractiveVerification !== false && factorClicks < MAX_FACTOR_CLICKS
+          && await tab.evaluate(SELECT_PUSH).catch(() => false)) { factorClicks++; continue; }
         // Only a single enrollment-screen submit is eligible; never select a different factor.
         if (!enrollmentSubmitted && await tab.evaluate(`(() => {
           if (location.origin !== 'https://onevu.vanderbilt.edu' || location.pathname.startsWith('/account-settings/')) return false;
