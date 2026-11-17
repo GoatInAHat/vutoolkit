@@ -81,22 +81,27 @@ describe("setup.run", () => {
     expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
   });
 
-  it("re-attaches the virtual authenticator when a navigation drops it before enrollment", async () => {
+  it("re-arms the virtual authenticator on the tab's own session when Chromium disables it", async () => {
     const h = harness();
     let failures = 0;
     const inner = h.deps.tab!;
     h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, send: (async (method: string, params?: Record<string, unknown>) => {
-      if (method === "WebAuthn.getCredentials" && failures++ < 2) throw new Error("ceremony: WebAuthn.getCredentials failed: Could not find a Virtual Authenticator matching the ID");
+      if (method === "WebAuthn.getCredentials" && failures++ < 2) throw new Error("ceremony: WebAuthn.getCredentials failed: The Virtual Authenticator Environment has not been enabled for this session");
       return tab.send(method, params);
     }) as CdpTab["send"] }))) as RunDeps["tab"];
-    let closed = 0;
-    h.deps.attach = vi.fn(async () => ({ send: h.send as CdpTab["send"], close: () => { closed++; } }));
     const result = await runSetup(dir(), { confirm: true }, h.deps);
     expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
-    // Re-attached through a fresh session on the same tab, which is closed again afterwards.
-    expect(h.deps.attach).toHaveBeenCalledWith("http://127.0.0.1:18800", "synthetic-tab");
-    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(2);
-    expect(closed).toBeGreaterThanOrEqual(1);
+    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("stops with AUTHENTICATOR_LOST when the authenticator keeps disappearing", async () => {
+    const h = harness();
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, send: (async (method: string, params?: Record<string, unknown>) => {
+      if (method === "WebAuthn.getCredentials") throw new Error("ceremony: WebAuthn.getCredentials failed: The Virtual Authenticator Environment has not been enabled for this session");
+      return tab.send(method, params);
+    }) as CdpTab["send"] }))) as RunDeps["tab"];
+    await expect(runSetup(dir(), { confirm: true }, h.deps)).rejects.toMatchObject({ code: "AUTHENTICATOR_LOST" });
   });
 
   it("requires account-holder authorization and configured identity", async () => {

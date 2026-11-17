@@ -2,7 +2,7 @@ import { checkAuthAbort } from "./budget.js";
 /** OneVU's real self-service enrollment, with credential material confined to CDP and the vault. */
 import { execFileSync } from "node:child_process";
 import { createPrivateKey } from "node:crypto";
-import { attachTargetSession, cdpReachable, withCdpTab, type CdpTab } from "./cdp-driver.js";
+import { cdpReachable, withCdpTab, type CdpTab } from "./cdp-driver.js";
 import { toCdpB64, type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, parseVaultPasskey } from "./ensure.js";
 import type { defaultEnsureBrowser } from "./ensure.js";
@@ -55,7 +55,6 @@ export interface SetupDeps {
   browserReady?: typeof defaultEnsureBrowser;
   reachable?: typeof cdpReachable;
   tab?: typeof withCdpTab;
-  attach?: typeof attachTargetSession;
   wait?: (ms: number) => Promise<void>;
   now?: () => number;
 }
@@ -303,17 +302,11 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     const verified = await waitForPage(tab, deps, expectedEmail);
     if (!verified.authenticated || !verified.identityMatched || !verified.enrollmentAvailable) throw new SetupError("SIGN_IN_REQUIRED", "Use setup.prepare and complete sign-in in the managed browser. The configured account identity must be visibly verified before enrollment; no enrollment was attempted.");
     // Attach the virtual authenticator on a blank document, then reload settings, as the sign-in
-    // ceremony does. Attached on the settings page itself, Chromium dropped it when OneVU moved to
-    // its enrollment page ("Virtual Authenticator Environment has not been enabled").
+    // ceremony does.
     await tab.send("Page.navigate", { url: "about:blank" });
     for (let n = 0; n < 20 && await tab.evaluate("location.href").catch(() => null) !== "about:blank"; n++) await (deps.wait ?? sleep)(250);
     let authenticatorId = await authenticator(tab);
-    // WebAuthn calls go through `wa`: the tab's own session, or a fresh one after Chromium
-    // disabled the domain on the original session across a document swap.
-    let wa: Pick<CdpTab, "send"> = tab;
-    let fresh: { close: () => void } | undefined;
     let authenticatorResets = 0;
-    let lastAttachError = "";
     let staged = false;
     let enrollmentSubmitted = false;
     let serialized: string | undefined;
@@ -336,27 +329,22 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
         await (deps.wait ?? sleep)(1000);
         let result: { credentials: Array<VaultPasskey> };
         try {
-          result = await wa.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
+          result = await tab.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
         } catch (error) {
-          // A cross-document navigation (OneVU's step-up and enrollment pages) can swap the
-          // renderer and drop the virtual authenticator. Before any credential exists, attach a
-          // fresh one so the enrollment page still finds it; afterwards, keep the staged copy.
-          if (staged || authenticatorResets >= MAX_AUTHENTICATOR_RESETS) {
+          // Chromium keeps one WebAuthn environment per frame and disables it when any DevTools
+          // session on that frame detaches (another tool inspecting the tab, for instance). The
+          // tab's own session can enable it again. Once the credential is staged it is already
+          // safe in the vault, so a later loss no longer matters.
+          if (staged) result = { credentials: [] };
+          else if (authenticatorResets >= MAX_AUTHENTICATOR_RESETS) {
             const reason = error instanceof Error ? error.message : String(error);
-            throw new SetupError("AUTHENTICATOR_LOST", `The browser's virtual authenticator became unavailable during enrollment (${reason}${lastAttachError ? `; re-attaching failed: ${lastAttachError}` : ""}). No credential was created.`);
+            throw new SetupError("AUTHENTICATOR_LOST", `The browser's virtual authenticator kept becoming unavailable during enrollment (${reason}). Another DevTools client attaching to and leaving the setup tab causes this. No credential was created.`);
+          } else {
+            authenticatorResets++;
+            await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+            authenticatorId = await authenticator(tab);
+            continue;
           }
-          authenticatorResets++;
-          await wa.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
-          try {
-            fresh?.close();
-            fresh = undefined;
-            const session = await (deps.attach ?? attachTargetSession)(browser.cdpUrl, tab.tabId);
-            fresh = session;
-            wa = session;
-            authenticatorId = await authenticator(wa);
-            lastAttachError = "";
-          } catch (attachError) { lastAttachError = attachError instanceof Error ? attachError.message : String(attachError); }
-          continue;
         }
         if (!staged && result.credentials.length > 0) {
           if (result.credentials.length !== 1) throw new SetupError("AMBIGUOUS_CREDENTIAL", "Enrollment produced multiple credentials; no entry was overwritten.");
@@ -413,8 +401,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
       if (staged) return { status: "stored-awaiting-confirmation" as const, secretName: PENDING_SECRET_NAME, serverConfirmed: false, existingPasskeysRevoked: false };
       throw new SetupError("ENROLLMENT_INCOMPLETE", "OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup.");
     } finally {
-      await wa.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
-      fresh?.close();
+      await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
     }
   }, { keepOpen: true });
 }

@@ -49,7 +49,7 @@ minutes apart, so a missed push never keeps paging your phone; redeploy to try a
 enrolled by this server rather than copying one from another host: two hosts sharing one key keep
 separate sign counters.
 
-`VUTOOLKIT_DEBUG_BROWSER=1` logs each browser page's origin, path and title as it changes.
+`VUTOOLKIT_DEBUG_BROWSER=1` logs each browser page's origin, path and title as it changes. Do not
+attach other DevTools clients to the setup tab while setup runs: Chromium switches off the tab's
+passkey helper whenever any DevTools session on it disconnects.
 
-`VUTOOLKIT_DEBUG_WEBAUTHN=1` skips setup and instead checks, without any sign-in or push, whether
-Chromium keeps its virtual authenticator across page loads, logging only the outcome of each step.
