@@ -13,7 +13,7 @@ const CREATE = `(async () => { try {
   const c = await navigator.credentials.create({ publicKey: { rp: { id: 'onevu.vanderbilt.edu', name: 'probe' },
     user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'probe', displayName: 'probe' },
     challenge: crypto.getRandomValues(new Uint8Array(32)), pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
-    authenticatorSelection: { residentKey: 'required', userVerification: 'required' }, timeout: 8000 } });
+    authenticatorSelection: { residentKey: 'required', userVerification: 'required' }, timeout: 6000 } });
   return 'created ' + c.type; } catch (e) { return 'create failed: ' + e.name + ': ' + e.message; } })()`;
 const GET = (id) => `(async () => { try {
   const c = await navigator.credentials.get({ publicKey: { rpId: 'onevu.vanderbilt.edu', challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -37,11 +37,30 @@ export async function webauthnProbe() {
           events.push(`armed(${why})`);
         } catch (e) { events.push(`arm(${why}) failed: ${e.message}`); }
       };
+      const t0 = Date.now();
+      let trace = [];
+      tab.onEvent((method, params) => {
+        if (!method.startsWith("Network.") || method === "Network.responseReceived") trace.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${method}${params.frame?.parentId || params.frameId && params.frameId !== tab.tabId ? "(sub)" : ""}${method === "Page.lifecycleEvent" ? ":" + params.name : ""}`);
+        if (trace.length > 400) trace = trace.slice(-200);
+      });
+      let watchdog = 0, lost = 0;
+      let busy = false;
+      const timer = setInterval(async () => {
+        if (!id || busy) return;
+        busy = true;
+        try { await tab.send("WebAuthn.getCredentials", { authenticatorId: id }); }
+        catch {
+          lost++;
+          trace.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ** environment lost`);
+          try { await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: id }); } catch {}
+          await arm("watchdog"); watchdog++;
+        } finally { busy = false; }
+      }, 200);
       tab.onEvent((method, params) => {
         if (method === "Page.frameNavigated" && !params.frame?.parentId) {
           let where = "?"; try { const u = new URL(params.frame.url); where = u.origin === "null" ? u.href : u.host; } catch {}
           events.push(`navigated ${where}`);
-          void arm("navigation");
+          // The environment usually survives the commit itself; the watchdog re-arms when it drops.
         }
         if (method === "WebAuthn.credentialAdded") { saved = { ...params.credential }; events.push("credentialAdded"); }
         if (method === "WebAuthn.credentialAsserted") { if (saved) saved.signCount = params.credential.signCount; events.push(`credentialAsserted signCount=${params.credential.signCount}`); }
@@ -55,11 +74,16 @@ export async function webauthnProbe() {
       });
       await tab.send("Page.enable");
       await tab.send("Network.enable");
+      await tab.send("Page.setLifecycleEventsEnabled", { enabled: true });
+      await tab.send("Runtime.enable");
+      await tab.send("Inspector.enable").catch(() => {});
       await arm("start");
       const check = async (label) => {
         let creds = "?";
         try { creds = `${(await tab.send("WebAuthn.getCredentials", { authenticatorId: id })).credentials.length} credentials`; } catch (e) { creds = e.message; }
         log(`${label}: ${creds} | events: ${events.splice(0).join(", ") || "none"} | docs: ${responses.splice(0).join(" ; ") || "none"}`);
+        log(`${label} trace: ${trace.filter((t) => !/Page\.(frameStartedLoading|frameStoppedLoading)\(sub\)/.test(t)).slice(-45).join(" / ")}`);
+        trace = [];
       };
       const go = async (label, url) => { await tab.send("Page.navigate", { url }); await sleep(8000); await check(label); };
       await go("onevu settings", "https://onevu.vanderbilt.edu/account-settings/security");
@@ -71,7 +95,8 @@ export async function webauthnProbe() {
       await sleep(500);
       await check("after get");
       await go("example.com", "https://example.com/");
-      log(`re-arms: ${arms}`);
+      log(`re-arms: ${arms}; environment lost ${lost} times, watchdog re-armed ${watchdog}`);
+      clearInterval(timer);
       if (id) await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: id }).catch(() => {});
     });
   } catch (e) { log(`aborted: ${e.message}`); }
