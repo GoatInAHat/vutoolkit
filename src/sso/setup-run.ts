@@ -39,6 +39,7 @@ type LoginPage = {
   password: boolean;
   challenge: boolean;
   error: boolean;
+  errorText?: string;
 };
 
 const LOGIN_PROBE = `(() => {
@@ -52,7 +53,8 @@ const LOGIN_PROBE = `(() => {
     identifier: trusted && visible(document.querySelector('input[name="identifier"]')),
     password: trusted && visible(document.querySelector('input[type="password"]')),
     challenge: trusted && /Okta Verify|push notification|check your phone|verify it.s you|verification code|enter a code/i.test(body),
-    error: trusted && !!errorText && visible(document.querySelector('.o-form-error-container'))
+    error: trusted && !!errorText && visible(document.querySelector('.o-form-error-container')),
+    errorText: trusted ? errorText.replace(/[^\\s@]+@[^\\s@]+/g, '<email>').replace(/\\s+/g, ' ').slice(0, 200) : ''
   };
 })()`;
 
@@ -101,7 +103,7 @@ async function driveSignIn(tab: CdpTab, email: string, options: Required<RunOpti
       }
       throw new SetupError("BROWSER_FLOW_CHANGED", "The setup tab left OneVU; no credentials were entered on that page.");
     }
-    if (page.error) throw new SetupError("OKTA_REJECTED", "OneVU rejected the sign-in. Verify this account's login prerequisites without repeating MFA blindly.");
+    if (page.error) throw new SetupError("OKTA_REJECTED", `OneVU rejected the sign-in${page.errorText ? ` ("${page.errorText}")` : ""}. Verify this account's login prerequisites without repeating MFA blindly.`);
     sawChallenge ||= page.challenge;
     if (!options.allowInteractiveVerification) {
       // In particular, do not submit a password here: doing so may itself send a phone push.

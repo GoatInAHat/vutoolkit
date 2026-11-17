@@ -54,6 +54,17 @@ function harness(opts: { signedIn?: boolean; existing?: string; pending?: string
 const dir = () => mkdtempSync(join(tmpdir(), "vutoolkit-setup-run-"));
 
 describe("setup.run", () => {
+  it("names OneVU's own error message when the sign-in is rejected", async () => {
+    const h = harness({ signedIn: false, password: "synthetic-password" });
+    const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
+      if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", security: false,
+        identifier: false, password: false, challenge: false, error: true, errorText: "Unable to sign in" };
+      return false;
+    });
+    h.deps.tab = (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: (async () => ({})) as CdpTab["send"], evaluate })) as RunDeps["tab"];
+    await expect(runSetup(dir(), { confirm: true }, h.deps)).rejects.toMatchObject({ code: "OKTA_REJECTED", message: expect.stringContaining('("Unable to sign in")') });
+  });
+
   it("requires account-holder authorization and configured identity", async () => {
     const h = harness();
     await expect(runSetup(dir(), { confirm: false }, h.deps)).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });

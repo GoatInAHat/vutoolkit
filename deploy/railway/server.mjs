@@ -80,21 +80,55 @@ async function autoSetup() {
   }
 }
 
-/** VUTOOLKIT_DEBUG_BROWSER=1 logs each page's origin, path and title as it changes (no query strings, no page content). */
+/**
+ * VUTOOLKIT_DEBUG_BROWSER=1 logs each page's origin, path and title as it changes (no query
+ * strings), and for OneVU pages the visible headings, controls and form error, emails redacted and
+ * field values never read, so a changed sign-in flow can be diagnosed from the deploy logs.
+ */
+const ONEVU_PROBE = `(() => {
+  const vis = e => !!(e && (e.offsetParent || e.getClientRects().length));
+  const red = s => String(s || "").replace(/[^\\s@]+@[^\\s@]+/g, "<email>").replace(/\\s+/g, " ").trim();
+  const pick = (sel, n) => [...document.querySelectorAll(sel)].filter(vis).map(e => red(e.innerText || e.value || e.getAttribute("aria-label")).slice(0, 50)).filter(Boolean).slice(0, n);
+  return JSON.stringify({
+    headings: pick("h1,h2,h3,legend", 4),
+    inputs: [...document.querySelectorAll("input,select")].filter(vis).map(e => [e.type, e.name].join(":")).slice(0, 8),
+    controls: pick("button,a.button,[data-se=button],input[type=submit]", 10),
+    error: red(document.querySelector(".o-form-error-container")?.textContent).slice(0, 200)
+  });
+})()`;
+
+function probe(wsUrl) {
+  return new Promise((resolve) => {
+    let ws;
+    const done = (value) => { try { ws?.close(); } catch { /* closed */ } resolve(value); };
+    try { ws = new WebSocket(wsUrl); } catch { return resolve(null); }
+    const timer = setTimeout(() => done(null), 3000);
+    ws.onopen = () => ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression: ONEVU_PROBE, returnByValue: true } }));
+    ws.onmessage = (m) => { try { const r = JSON.parse(m.data); if (r.id === 1) { clearTimeout(timer); done(r.result?.result?.value ?? null); } } catch { /* ignore */ } };
+    ws.onerror = () => { clearTimeout(timer); done(null); };
+  });
+}
+
 function browserLog() {
   if (process.env.VUTOOLKIT_DEBUG_BROWSER !== "1" || !process.env.VUTOOLKIT_CDP_URL) return;
   let last = "";
+  const seen = new Map();
   setInterval(async () => {
     try {
-      const list = await (await fetch(new URL("/json/list", process.env.VUTOOLKIT_CDP_URL))).json();
-      const pages = list.filter((t) => t.type === "page").map((t) => {
+      const list = (await (await fetch(new URL("/json/list", process.env.VUTOOLKIT_CDP_URL))).json()).filter((t) => t.type === "page");
+      const pages = list.map((t) => {
         let where = "";
         try { const u = new URL(t.url); where = u.origin === "null" ? u.href : u.origin + u.pathname; } catch { where = "?"; }
         return `${where} [${String(t.title ?? "").slice(0, 60)}]`;
       }).join(" | ");
       if (pages !== last) { last = pages; log(`browser: ${pages}`); }
+      for (const t of list) {
+        if (!String(t.url).startsWith("https://onevu.vanderbilt.edu/") || !t.webSocketDebuggerUrl) continue;
+        const dom = await probe(t.webSocketDebuggerUrl);
+        if (dom && seen.get(t.id) !== dom) { seen.set(t.id, dom); log(`onevu page: ${dom}`); }
+      }
     } catch { /* browser restarting */ }
-  }, 5000).unref();
+  }, 3000).unref();
 }
 
 browserLog();
