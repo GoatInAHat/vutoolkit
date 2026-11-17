@@ -89,9 +89,14 @@ describe("setup.run", () => {
       if (method === "WebAuthn.getCredentials" && failures++ < 2) throw new Error("ceremony: WebAuthn.getCredentials failed: Could not find a Virtual Authenticator matching the ID");
       return tab.send(method, params);
     }) as CdpTab["send"] }))) as RunDeps["tab"];
+    let closed = 0;
+    h.deps.attach = vi.fn(async () => ({ send: h.send as CdpTab["send"], close: () => { closed++; } }));
     const result = await runSetup(dir(), { confirm: true }, h.deps);
     expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
-    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(3);
+    // Re-attached through a fresh session on the same tab, which is closed again afterwards.
+    expect(h.deps.attach).toHaveBeenCalledWith("http://127.0.0.1:18800", "synthetic-tab");
+    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(2);
+    expect(closed).toBeGreaterThanOrEqual(1);
   });
 
   it("requires account-holder authorization and configured identity", async () => {

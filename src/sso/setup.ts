@@ -2,7 +2,7 @@ import { checkAuthAbort } from "./budget.js";
 /** OneVU's real self-service enrollment, with credential material confined to CDP and the vault. */
 import { execFileSync } from "node:child_process";
 import { createPrivateKey } from "node:crypto";
-import { cdpReachable, withCdpTab, type CdpTab } from "./cdp-driver.js";
+import { attachTargetSession, cdpReachable, withCdpTab, type CdpTab } from "./cdp-driver.js";
 import { toCdpB64, type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, parseVaultPasskey } from "./ensure.js";
 import type { defaultEnsureBrowser } from "./ensure.js";
@@ -55,6 +55,7 @@ export interface SetupDeps {
   browserReady?: typeof defaultEnsureBrowser;
   reachable?: typeof cdpReachable;
   tab?: typeof withCdpTab;
+  attach?: typeof attachTargetSession;
   wait?: (ms: number) => Promise<void>;
   now?: () => number;
 }
@@ -223,7 +224,7 @@ const PAGE_PROBE = (email: string, verifyIdentity = true) => `(async () => {
   };
 })()`;
 
-async function authenticator(tab: CdpTab, passkey?: VaultPasskey): Promise<string> {
+async function authenticator(tab: Pick<CdpTab, "send">, passkey?: VaultPasskey): Promise<string> {
   checkAuthAbort();
   await tab.send("WebAuthn.enable");
   const created = await tab.send<{ authenticatorId: string }>("WebAuthn.addVirtualAuthenticator", {
@@ -307,6 +308,10 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
     await tab.send("Page.navigate", { url: "about:blank" });
     for (let n = 0; n < 20 && await tab.evaluate("location.href").catch(() => null) !== "about:blank"; n++) await (deps.wait ?? sleep)(250);
     let authenticatorId = await authenticator(tab);
+    // WebAuthn calls go through `wa`: the tab's own session, or a fresh one after Chromium
+    // disabled the domain on the original session across a document swap.
+    let wa: Pick<CdpTab, "send"> = tab;
+    let fresh: { close: () => void } | undefined;
     let authenticatorResets = 0;
     let lastAttachError = "";
     let staged = false;
@@ -331,7 +336,7 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
         await (deps.wait ?? sleep)(1000);
         let result: { credentials: Array<VaultPasskey> };
         try {
-          result = await tab.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
+          result = await wa.send<{ credentials: Array<VaultPasskey> }>("WebAuthn.getCredentials", { authenticatorId });
         } catch (error) {
           // A cross-document navigation (OneVU's step-up and enrollment pages) can swap the
           // renderer and drop the virtual authenticator. Before any credential exists, attach a
@@ -341,9 +346,16 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
             throw new SetupError("AUTHENTICATOR_LOST", `The browser's virtual authenticator became unavailable during enrollment (${reason}${lastAttachError ? `; re-attaching failed: ${lastAttachError}` : ""}). No credential was created.`);
           }
           authenticatorResets++;
-          await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
-          try { authenticatorId = await authenticator(tab); lastAttachError = ""; }
-          catch (attachError) { lastAttachError = attachError instanceof Error ? attachError.message : String(attachError); }
+          await wa.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+          try {
+            fresh?.close();
+            fresh = undefined;
+            const session = await (deps.attach ?? attachTargetSession)(browser.cdpUrl, tab.tabId);
+            fresh = session;
+            wa = session;
+            authenticatorId = await authenticator(wa);
+            lastAttachError = "";
+          } catch (attachError) { lastAttachError = attachError instanceof Error ? attachError.message : String(attachError); }
           continue;
         }
         if (!staged && result.credentials.length > 0) {
@@ -401,7 +413,8 @@ export async function enrollSetup(options: { confirm: boolean; replaceExisting?:
       if (staged) return { status: "stored-awaiting-confirmation" as const, secretName: PENDING_SECRET_NAME, serverConfirmed: false, existingPasskeysRevoked: false };
       throw new SetupError("ENROLLMENT_INCOMPLETE", "OneVU did not issue a credential before the timeout. No existing vault entry or account passkey was changed by cleanup.");
     } finally {
-      await tab.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+      await wa.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId }).catch(() => {});
+      fresh?.close();
     }
   }, { keepOpen: true });
 }

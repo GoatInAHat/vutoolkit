@@ -7,7 +7,7 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 ## 0.5.2
 
 - Keep waiting while Okta shows its "Haven't received a push notification yet?" hint; it sits in the form's error container but is not a rejection, and `setup.run` used to stop there with `OKTA_REJECTED` while the push was still pending.
-- Fix passkey enrollment failing with `WebAuthn.getCredentials failed` once OneVU moved to its enrollment page: the virtual authenticator is now attached on a blank page before settings load (as the sign-in ceremony does), re-attached if it still disappears before a credential exists, and a lasting loss reports `AUTHENTICATOR_LOST` with Chromium's reason.
+- Fix passkey enrollment failing with `WebAuthn.getCredentials failed` once OneVU moved to its enrollment page: the virtual authenticator is now attached on a blank page before settings load (as the sign-in ceremony does), re-attached through a fresh DevTools session on the same tab if it still disappears before a credential exists, and a lasting loss reports `AUTHENTICATOR_LOST` with Chromium's reason.
 - `OKTA_REJECTED` now quotes OneVU's own error text (emails redacted), and CDP failures include the protocol's error message.
 - Railway kit: `VUTOOLKIT_DEBUG_BROWSER=1` also logs each OneVU page's headings, controls and form error, never field values.
 
