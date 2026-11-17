@@ -4,7 +4,7 @@ import { sessionStore } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, withCdpTab, type CdpTab } from "./cdp-driver.js";
 import { type VaultPasskey } from "./ceremony.js";
 import { defaultSecretsRead, ensureSession, parseVaultPasskey } from "./ensure.js";
-import { enrollSetup, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
+import { enrollSetup, MAX_FACTOR_CLICKS, SELECT_PUSH, SETTINGS_URL, SetupError, validateCredential, type SetupDeps } from "./setup.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { AuthError } from "./errors.js";
 
@@ -84,6 +84,7 @@ async function driveSignIn(tab: CdpTab, email: string, options: Required<RunOpti
   let submittedIdentifier = false;
   let submittedPassword = false;
   let sawChallenge = false;
+  let factorClicks = 0;
   const startedAt = (deps.now ?? Date.now)();
   const wait = deps.wait ?? sleep;
   while ((deps.now ?? Date.now)() < end) {
@@ -106,6 +107,11 @@ async function driveSignIn(tab: CdpTab, email: string, options: Required<RunOpti
       // In particular, do not submit a password here: doing so may itself send a phone push.
       await wait(1000);
       continue;
+    }
+    // The security-method chooser sends nothing until a method is picked: pick the push.
+    if (!page.identifier && !page.password && factorClicks < MAX_FACTOR_CLICKS) {
+      const picked = await tab.evaluate(SELECT_PUSH).catch(() => false);
+      if (picked) { factorClicks++; sawChallenge = true; await wait(3000); continue; }
     }
     if (page.identifier && !submittedIdentifier) {
       const filled = await tab.evaluate(`(() => {
