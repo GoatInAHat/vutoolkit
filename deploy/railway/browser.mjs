@@ -5,10 +5,12 @@
 // sign-in page, and (2) offers Playwright's tools as `browser.*` operations. Session values stay in
 // this process: the tools that read or set cookies and storage, and the one that runs arbitrary
 // Playwright code, are not offered, and cookie or authorization header lines are redacted from
-// every result.
+// every result. YES pages are read-only: yes-guard-page.cjs refuses enrollment and cart or
+// planner requests.
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const local = createRequire(import.meta.url);
 const dep = (name) => import(local.resolve(name));
@@ -56,6 +58,8 @@ export async function browserOperations({ z, ensureSession, store, dataDir, log 
         chromiumSandbox: false,
         args: ["--disable-dev-shm-usage"],
       },
+      // YES stays read-only in the browser too (src/yes/guard.ts).
+      initPage: [fileURLToPath(new URL("./yes-guard-page.cjs", import.meta.url))],
     },
     capabilities: ["core", "core-tabs", "core-navigation", "core-input", "storage", "network"],
     outputDir: join(dir, "output"),

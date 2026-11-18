@@ -78,6 +78,25 @@ describe("sessionFetch", () => {
     expect(sent[3]).toMatchObject({ url: "https://app.vanderbilt.edu/api", method: "POST", body: "{}" });
   });
 
+  it("does not resend a POST that the service redirected elsewhere without a sign-in", async () => {
+    const { impl, sent } = scripted([
+      { status: 303, location: "https://other.vanderbilt.edu/confirmation" },
+      { status: 200, body: "<html><body>" + "Saved. ".repeat(50) + "</body></html>" },
+    ]);
+    const res = await sessionFetch({ url: "https://app.vanderbilt.edu/api", method: "POST", body: "x=1" }, { jar: new CookieJar(), fetchImpl: impl });
+    expect(sent.map((s) => s.method)).toEqual(["POST", "GET"]);
+    expect(res.url).toBe("https://other.vanderbilt.edu/confirmation");
+  });
+
+  it("runs the guard on every hop and stops at a refused one", async () => {
+    const { impl, sent } = scripted([{ status: 302, location: "https://more.app.vanderbilt.edu/more/StudentClassExecute!add.action" }]);
+    const guard = (url: string) => {
+      if (url.includes("StudentClassExecute")) throw new Error("refused");
+    };
+    await expect(sessionFetch({ url: "https://app.vanderbilt.edu/x" }, { jar: new CookieJar(), fetchImpl: impl, guard })).rejects.toThrow("refused");
+    expect(sent).toHaveLength(1);
+  });
+
   it("reports a refused session when the dance ends on the sign-in page", async () => {
     const { impl } = scripted([
       { status: 302, location: "https://login.microsoftonline.com/common/oauth2/authorize" },
