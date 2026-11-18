@@ -56,6 +56,7 @@ const DEPS: EnsureDeps = {
   env: { VUTOOLKIT_CDP_URL: "http://127.0.0.1:18800" },
   now: () => NOW,
   retryDelayMs: 0,
+  seedBrowser: async () => {},
 };
 
 describe("defaultEnsureBrowser", () => {
@@ -281,6 +282,7 @@ describe("ensureSession", () => {
     const result = await ensureSession("microsoft", store, {
       ...DEPS,
       ceremony: async () => { order.push("onevu"); return minted(); },
+      seedBrowser: async (_cdp, cookies) => { order.push(`seed ${cookies.map((c) => c.name).join(",")}`); },
       microsoftCeremony: async () => {
         carries++;
         order.push(`carry${carries}`);
@@ -289,7 +291,7 @@ describe("ensureSession", () => {
       },
     });
     expect(result.source).toBe("minted");
-    expect(order).toEqual(["carry1", "onevu", "carry2"]);
+    expect(order).toEqual(["carry1", "onevu", "seed idx", "carry2"]);
     expect((await store.get("vanderbilt"))?.cookieHeader).toBe("idx=v");
   });
 
