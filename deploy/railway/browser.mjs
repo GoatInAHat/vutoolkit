@@ -7,7 +7,7 @@
 // Playwright code, are not offered, and cookie or authorization header lines are redacted from
 // every result. YES pages are read-only: yes-guard-page.cjs refuses enrollment and cart or
 // planner requests.
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,8 +42,10 @@ const RELOAD_MS = 30 * 60_000;
  */
 export async function browserOperations({ z, ensureSession, store, dataDir, log }) {
   const dir = join(dataDir, "browser");
-  const stateFile = join(dir, "storage-state.json");
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const outputDir = join(dir, "output");
+  // Playwright MCP reads files only inside its output directory; the file is removed once loaded.
+  const stateFile = join(outputDir, "storage-state.json");
+  mkdirSync(outputDir, { recursive: true, mode: 0o700 });
 
   const { createConnection } = await dep("@playwright/mcp");
   const { Client } = await dep("@modelcontextprotocol/sdk/client/index.js");
@@ -62,7 +64,7 @@ export async function browserOperations({ z, ensureSession, store, dataDir, log 
       initPage: [fileURLToPath(new URL("./yes-guard-page.cjs", import.meta.url))],
     },
     capabilities: ["core", "core-tabs", "core-navigation", "core-input", "storage", "network"],
-    outputDir: join(dir, "output"),
+    outputDir,
     imageResponses: "omit",
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
@@ -89,8 +91,13 @@ export async function browserOperations({ z, ensureSession, store, dataDir, log 
     }
     writeFileSync(`${stateFile}.tmp`, JSON.stringify({ cookies, origins: [] }), { mode: 0o600 });
     renameSync(`${stateFile}.tmp`, stateFile);
-    const set = await client.callTool({ name: "browser_set_storage_state", arguments: { filename: stateFile } });
-    if (set.isError) throw new Error(`could not load the stored sessions into the browser: ${text(set).slice(0, 300)}`);
+    let set;
+    try {
+      set = await client.callTool({ name: "browser_set_storage_state", arguments: { filename: stateFile } });
+    } finally {
+      rmSync(stateFile, { force: true });
+    }
+    if (set.isError) throw new Error(`could not load the stored sessions into the browser: ${text(set).replace(/^#+.*$/gm, "").replace(/\s+/g, " ").trim().slice(0, 300)}`);
   }
 
   let loadedAt = 0;

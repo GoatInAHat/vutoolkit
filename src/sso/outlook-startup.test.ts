@@ -33,7 +33,7 @@ describe("Outlook startup identity", () => {
     emit("Network.responseReceived", { requestId: "unauthorized", response: response("https://outlook.cloud.microsoft", 401) });
     emit("Network.loadingFinished", { requestId: "wrong-host" });
     emit("Network.loadingFinished", { requestId: "unauthorized" });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls.map(c => (c as unknown[])[0])).toEqual(["Network.enable", "Network.setBypassServiceWorker"]);
     emit("Network.responseReceived", { requestId: "mail", response: response("https://outlook.cloud.microsoft", 200) });
     emit("Network.loadingFinished", { requestId: "mail" });
     await Promise.resolve();
