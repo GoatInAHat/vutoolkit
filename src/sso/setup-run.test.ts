@@ -54,6 +54,56 @@ function harness(opts: { signedIn?: boolean; existing?: string; pending?: string
 const dir = () => mkdtempSync(join(tmpdir(), "vutoolkit-setup-run-"));
 
 describe("setup.run", () => {
+  it("names OneVU's own error message when the sign-in is rejected", async () => {
+    const h = harness({ signedIn: false, password: "synthetic-password" });
+    const evaluate = vi.fn(async (expression: string): Promise<unknown> => {
+      if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", security: false,
+        identifier: false, password: false, challenge: false, error: true, errorText: "Unable to sign in" };
+      return false;
+    });
+    h.deps.tab = (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: (async () => ({})) as CdpTab["send"], evaluate })) as RunDeps["tab"];
+    await expect(runSetup(dir(), { confirm: true }, h.deps)).rejects.toMatchObject({ code: "OKTA_REJECTED", message: expect.stringContaining('("Unable to sign in")') });
+  });
+
+  it("treats Okta's push-pending hint as waiting, not a rejection", async () => {
+    const h = harness({ password: "synthetic-password" });
+    let probes = 0;
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, evaluate: (async (expression: string) => {
+      if (expression.includes("const body =") && probes++ < 2) return { url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", security: false,
+        identifier: false, password: false, challenge: true, error: true,
+        errorText: "Haven't received a push notification yet? Try opening the Okta Verify App on your phone." };
+      if (expression.includes("const body =")) return { url: "https://onevu.vanderbilt.edu/account-settings/security", security: true,
+        identifier: false, password: false, challenge: false, error: false };
+      return tab.evaluate(expression);
+    }) as CdpTab["evaluate"] }))) as RunDeps["tab"];
+    const result = await runSetup(dir(), { confirm: true }, h.deps);
+    expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
+  });
+
+  it("re-arms the virtual authenticator on the tab's own session when Chromium disables it", async () => {
+    const h = harness();
+    let failures = 0;
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, send: (async (method: string, params?: Record<string, unknown>) => {
+      if (method === "WebAuthn.getCredentials" && failures++ < 2) throw new Error("ceremony: WebAuthn.getCredentials failed: The Virtual Authenticator Environment has not been enabled for this session");
+      return tab.send(method, params);
+    }) as CdpTab["send"] }))) as RunDeps["tab"];
+    const result = await runSetup(dir(), { confirm: true }, h.deps);
+    expect(result).toMatchObject({ status: "ready", passkey: "enrolled" });
+    expect(h.send.mock.calls.filter(([m]) => m === "WebAuthn.addVirtualAuthenticator").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("stops with AUTHENTICATOR_LOST when the authenticator keeps disappearing", async () => {
+    const h = harness();
+    const inner = h.deps.tab!;
+    h.deps.tab = (async (url, start, fn) => inner(url, start, (tab) => fn({ ...tab, send: (async (method: string, params?: Record<string, unknown>) => {
+      if (method === "WebAuthn.getCredentials") throw new Error("ceremony: WebAuthn.getCredentials failed: The Virtual Authenticator Environment has not been enabled for this session");
+      return tab.send(method, params);
+    }) as CdpTab["send"] }))) as RunDeps["tab"];
+    await expect(runSetup(dir(), { confirm: true }, h.deps)).rejects.toMatchObject({ code: "AUTHENTICATOR_LOST" });
+  });
+
   it("requires account-holder authorization and configured identity", async () => {
     const h = harness();
     await expect(runSetup(dir(), { confirm: false }, h.deps)).rejects.toMatchObject({ code: "CONFIRMATION_REQUIRED" });

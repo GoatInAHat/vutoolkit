@@ -68,7 +68,7 @@ async function autoSetup() {
   save();
   log(`auto-setup: attempt ${state.attempts}. Approve the Okta Verify push for Vanderbilt on your phone.`);
   try {
-    const result = await op("setup.run").handler({ confirm: true, recovery: false, allowInteractiveVerification: true, timeoutSeconds: 300 }, ctx);
+    const result = await op("setup.run").handler({ confirm: true, recovery: false, allowInteractiveVerification: true, timeoutSeconds: 420 }, ctx);
     state.result = `${result.status}/${result.passkey}`;
     save();
     log(`auto-setup: done (${result.status}, passkey ${result.passkey}, Microsoft ${result.microsoftSession}).`);
@@ -80,21 +80,26 @@ async function autoSetup() {
   }
 }
 
-/** VUTOOLKIT_DEBUG_BROWSER=1 logs each page's origin, path and title as it changes (no query strings, no page content). */
+/**
+ * VUTOOLKIT_DEBUG_BROWSER=1 logs each page's origin, path and title as it changes (no query
+ * strings). It reads only the target list and never attaches to a page: Chromium disables a
+ * frame's WebAuthn environment whenever any DevTools session on it detaches, which would take the
+ * passkey helper away from setup and sign-in.
+ */
 function browserLog() {
   if (process.env.VUTOOLKIT_DEBUG_BROWSER !== "1" || !process.env.VUTOOLKIT_CDP_URL) return;
   let last = "";
   setInterval(async () => {
     try {
-      const list = await (await fetch(new URL("/json/list", process.env.VUTOOLKIT_CDP_URL))).json();
-      const pages = list.filter((t) => t.type === "page").map((t) => {
+      const list = (await (await fetch(new URL("/json/list", process.env.VUTOOLKIT_CDP_URL))).json()).filter((t) => t.type === "page");
+      const pages = list.map((t) => {
         let where = "";
         try { const u = new URL(t.url); where = u.origin === "null" ? u.href : u.origin + u.pathname; } catch { where = "?"; }
         return `${where} [${String(t.title ?? "").slice(0, 60)}]`;
       }).join(" | ");
       if (pages !== last) { last = pages; log(`browser: ${pages}`); }
     } catch { /* browser restarting */ }
-  }, 5000).unref();
+  }, 3000).unref();
 }
 
 browserLog();

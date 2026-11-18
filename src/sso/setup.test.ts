@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { advancePasskeyCounter, configureIdentity, enrollSetup, prepareSetup, setupStatus, type SetupDeps } from "./setup.js";
+import { advancePasskeyCounter, CHOOSE_PASSKEY_METHOD, configureIdentity, enrollSetup, prepareSetup, setupStatus, SUBMIT_PASSKEY_ENROLLMENT, type SetupDeps } from "./setup.js";
 import type { VaultPasskey } from "./ceremony.js";
 import type { CdpTab } from "./cdp-driver.js";
 
@@ -20,7 +20,7 @@ function harness(options: { existing?: string; signedIn?: boolean; identityMatch
   const calls: string[] = [];
   const page = () => ({ authenticated: options.signedIn !== false, identityMatched: options.identityMatched ?? options.signedIn !== false, enrollmentAvailable: options.signedIn !== false,
     enrolledCount: started && options.acknowledge !== false ? 2 : 1, signInRequired: options.signedIn === false });
-  const send = vi.fn(async (method: string) => {
+  const send = vi.fn(async (method: string, _params?: Record<string, unknown>) => {
     calls.push(method);
     if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-authenticator" };
     if (method === "WebAuthn.getCredentials") return { credentials: started ? [credential] : [] };
@@ -42,7 +42,7 @@ function harness(options: { existing?: string; signedIn?: boolean; identityMatch
     wait: async (ms) => { clock += ms; }, now: () => clock,
     tab: (async (_url, _start, fn) => fn({ tabId: "synthetic-tab", send: send as CdpTab["send"], evaluate })) as SetupDeps["tab"],
   };
-  return { deps, write, calls, vault, evaluate };
+  return { deps, write, calls, vault, evaluate, send };
 }
 
 describe("OneVU setup", () => {
@@ -164,6 +164,22 @@ describe("OneVU setup", () => {
     expect(continuationClicks).toBe(1);
   });
 
+  it("picks the passkey row on OneVU's security-method list a bounded number of times before submitting", async () => {
+    const h = harness({ acknowledge: false });
+    let listClicks = 0;
+    let submits = 0;
+    const original = h.evaluate.getMockImplementation()!;
+    h.evaluate.mockImplementation(async (expression: string) => {
+      if (expression === CHOOSE_PASSKEY_METHOD) { listClicks++; return true; }
+      if (expression === SUBMIT_PASSKEY_ENROLLMENT) { submits++; return true; }
+      return original(expression);
+    });
+    await enrollSetup({ confirm: true, timeoutSeconds: 6 }, h.deps);
+    expect(listClicks).toBe(2);
+    expect(submits).toBe(1);
+    expect(CHOOSE_PASSKEY_METHOD).toMatch(/Okta Verify\|Phone\|Email\|Password/);
+  });
+
   it("does not promote a new key when staged vault readback is corrupt", async () => {
     const oldRaw = JSON.stringify(credential);
     const h = harness({ existing: oldRaw, corruptReadback: true });
@@ -219,6 +235,15 @@ describe("OneVU setup", () => {
     expect(h.write).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result).includes(credential.privateKey)).toBe(false);
     expect(h.calls).toContain("WebAuthn.removeVirtualAuthenticator");
+  });
+
+  it("attaches the virtual authenticator on a blank page, then reloads settings, before enrolling", async () => {
+    const h = harness();
+    await enrollSetup({ confirm: true }, h.deps);
+    const navigations = h.send.mock.calls.filter(([method]) => method === "Page.navigate").map(([, params]) => (params as { url: string }).url);
+    expect(navigations).toEqual(["about:blank", "https://onevu.vanderbilt.edu/account-settings/security"]);
+    const order = h.calls.filter((m) => m === "Page.navigate" || m === "WebAuthn.addVirtualAuthenticator");
+    expect(order).toEqual(["Page.navigate", "WebAuthn.addVirtualAuthenticator", "Page.navigate"]);
   });
 
   it("preserves a vaulted new credential without claiming server acceptance when confirmation is missing", async () => {
