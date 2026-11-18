@@ -4,6 +4,11 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.6.2
+
+- Fix every `request` that got a 401 from a Microsoft 365 host re-minting the Microsoft session and still returning 401. 0.6.1 judged the session by a silent sign-in with the stored cookies, but Microsoft's sign-in service answers "no user is signed in" (AADSTS50058) for those cookies even seconds after a successful mint, so the check called every session dead. The check is gone: `sessions.ensure` re-mints a Microsoft session past its two-minute grace period as 0.6.0 did, and a 401 is retried once on a fresh session only when the request went out on an older one. A 401 on a fresh session comes back with the trace line saying the endpoint wants an OAuth bearer token.
+- `browser.navigate` on Outlook and the other Microsoft 365 apps now returns the page as it settled (the signed-in inbox) instead of the empty "Outlook" shell it first loaded.
+
 ## 0.6.1
 
 - Fix the signed-in browser landing on Microsoft's sign-in page for Outlook while `sessions.list` said the Microsoft session was healthy. Outlook on the web signs in with tokens its page keeps in local storage, and its page loads first and only redirects to sign-in a few seconds later, so the browser never noticed and the cookies it was given could not sign it in. The browser now waits for such a page to settle, finishes Microsoft's sign-in itself in the background (account tile, identifier, OneVU federation, "Stay signed in?"; never a password), minting OneVU with the toolkit passkey when the federation hop needs it, and opens the page again. Reloading the stored sessions no longer wipes the browser's own app sign-ins and local storage; only the sign-in hosts' cookies are renewed.

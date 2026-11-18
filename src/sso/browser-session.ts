@@ -155,7 +155,9 @@ export async function navigateSignedIn(driver: BrowserDriver, url: string, opts:
   const open = async () => {
     const landedAt = pageUrl(result.text) ?? url;
     const settled = await settledUrl(driver, landedAt, opts);
-    if (settled !== landedAt) result = await driver.snapshot();
+    // The navigate result shows the page as it first loaded (for Outlook, an empty "Outlook" shell),
+    // so whenever the page had time to settle, show it as it is now.
+    if (settled !== landedAt || signsInByScript(landedAt)) result = await driver.snapshot();
     return settled;
   };
   let where = await open();

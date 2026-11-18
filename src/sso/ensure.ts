@@ -5,10 +5,11 @@
  * whether the browser is running, or whether another call is already minting.
  *
  * Guarantees, in order of the failures they remove:
- * - Liveness, not cookie arithmetic: a cached session is probed against the real service (for
- *   Microsoft, a silent OpenID Connect sign-in for Outlook) and a dead-but-unexpired one is
- *   re-minted (Okta and Entra idle out server-side while cookies keep a far-future expiry).
- *   Sessions acquired in the last two minutes skip the probe.
+ * - Liveness, not cookie arithmetic: a cached Vanderbilt session is probed against the real
+ *   service and a dead-but-unexpired one is re-minted (Okta idles out server-side while cookies
+ *   keep a far-future expiry). Microsoft has no cookie-only probe (see liveness.ts), so its
+ *   session is re-minted once it is past the grace period. Sessions acquired in the last two
+ *   minutes are served as they are.
  * - The managed browser is started when its CDP endpoint is down (a Gateway restart kills it).
  * - Microsoft rides OneVU federation: when the Outlook carry lands on OneVU sign-in, the passkey
  *   ceremony signs the browser in and the carry runs again.
@@ -26,7 +27,7 @@ import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { CounterAccountingError, runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
-import { probeSession, type LivenessProbe } from "./liveness.js";
+import { probeVanderbilt, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
 import { seedBrowserCookies } from "./cdp-driver.js";
 
@@ -272,12 +273,13 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
     if (justAcquired(existing, now)) {
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
     }
-    // Ask the service itself, with the stored cookies alone: for Microsoft, whether its sign-in
-    // service would silently sign Outlook in. A page load in a browser would not prove it, since
-    // Outlook's page can renew its own credentials without the stored cookies.
+    // Microsoft's sign-in service does not answer a silent sign-in for the harvested cookies (see
+    // liveness.ts), and a browser page load would not prove them alive either, since Outlook's page
+    // renews its own credentials. So a Microsoft session past the grace period is re-harvested.
+    if (idp === "microsoft" && !deps.probe) return mint(idp, store, deps);
     const cookies: CookieRecord[] = store.cookies(idp);
     const probeStarted = Date.now();
-    const alive = await (deps.probe ?? probeSession)(idp, cookies);
+    const alive = deps.probe ? await deps.probe(idp, cookies) : await probeVanderbilt(cookies);
     tracer(deps.env ?? process.env, idp)(`probe ${alive ? "alive" : "dead"}`, probeStarted);
     if (alive) {
       if (!existing.healthy) await store.put({ ...existing, cookies, healthy: true });

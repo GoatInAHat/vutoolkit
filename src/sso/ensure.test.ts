@@ -121,17 +121,17 @@ describe("ensureSession", () => {
     expect((await store.get("vanderbilt"))?.cookieHeader).toBe("idx=v");
   });
 
-  it("judges an older Microsoft session by a live probe instead of re-minting it blindly", async () => {
+  it("re-harvests an older Microsoft session, since no cookie-only probe can judge it", async () => {
     const store = freshStore();
     await store.put({ idp: "microsoft", acquiredAt: HOUR_AGO, expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "MSAL=x", cookies: [{ name: "MSAL", value: "x", domain: "login.microsoftonline.com" }] });
-    const probed: string[] = [];
+    let minted = 0;
     const result = await ensureSession("microsoft", store, {
       ...DEPS,
-      microsoftCeremony: async () => { throw new Error("must not mint a live Microsoft session"); },
-      probe: async (idp) => { probed.push(idp); return true; },
+      probe: undefined,
+      microsoftCeremony: async () => { minted++; return mintedMicrosoft(); },
     });
-    expect(result).toMatchObject({ source: "cache", healthy: true });
-    expect(probed).toEqual(["microsoft"]);
+    expect(result.source).toBe("minted");
+    expect(minted).toBe(1);
   });
 
   it("stops reporting a dead session as healthy even when the re-mint fails", async () => {
