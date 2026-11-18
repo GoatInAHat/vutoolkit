@@ -142,11 +142,13 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
   const origin = new URL(request.url);
   const callerHeaders = Object.fromEntries(Object.entries(request.headers ?? {}).filter(([k]) => k.toLowerCase() !== "cookie"));
 
-  // True once the request passed through an IdP: only then is a non-GET request sent again.
+  // True once an IdP intercepted the request: only then is a non-GET request sent again. A
+  // request aimed at an IdP host itself is never resent.
+  const toIdp = SIGN_IN_HOSTS.has(origin.hostname);
   let signedIn = false;
   const send = async (url: string, method: string, headers: Record<string, string>, body?: string) => {
     opts.guard?.(url, method);
-    if (SIGN_IN_HOSTS.has(new URL(url).hostname)) signedIn = true;
+    if (!toIdp && SIGN_IN_HOSTS.has(new URL(url).hostname)) signedIn = true;
     const cookie = opts.jar.headerFor(url);
     const signal = AbortSignal.timeout(hopTimeoutMs);
     const res = await impl(url, {
@@ -187,7 +189,7 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
     const post = html && autoPostForm(html, url);
     if (post) {
       danced = true;
-      signedIn = true;
+      signedIn = !toIdp;
       url = post.action;
       method = "POST";
       body = post.body;

@@ -88,6 +88,12 @@ describe("sessionFetch", () => {
     expect(res.url).toBe("https://other.vanderbilt.edu/confirmation");
   });
 
+  it("never resends a POST aimed at an IdP host itself", async () => {
+    const { impl, sent } = scripted([{ status: 200, type: "application/json", body: "{}" }]);
+    await sessionFetch({ url: "https://onevu.vanderbilt.edu/api/v1/authn", method: "POST", body: "{}" }, { jar: new CookieJar(), fetchImpl: impl });
+    expect(sent).toHaveLength(1);
+  });
+
   it("runs the guard on every hop and stops at a refused one", async () => {
     const { impl, sent } = scripted([{ status: 302, location: "https://more.app.vanderbilt.edu/more/StudentClassExecute!add.action" }]);
     const guard = (url: string) => {
