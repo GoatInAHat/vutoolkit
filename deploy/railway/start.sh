@@ -17,6 +17,8 @@ if ! command -v openclaw >/dev/null 2>&1; then
 fi
 
 browser=$(command -v chromium || command -v chromium-browser || command -v google-chrome || true)
+# The signed-in browser (browser.mjs) launches its own Chromium from the same binary.
+export VUTOOLKIT_BROWSER_EXECUTABLE=${VUTOOLKIT_BROWSER_EXECUTABLE:-$browser}
 if [ -n "$browser" ]; then
   mkdir -p "$profile"
   # A profile on a persistent volume keeps the previous container's lock after a restart or a

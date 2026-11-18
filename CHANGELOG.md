@@ -4,6 +4,16 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.6.0
+
+The tool surface now gives the agent the signed-in session itself instead of per-site wrappers.
+
+- Add `request`: one HTTP request to any Vanderbilt (`*.vanderbilt.edu`) or Microsoft 365 endpoint as the signed-in student. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts, redirect stubs), a refused session is re-minted with the toolkit passkey and the request retried once, and cookie values never appear in the result. It replaces `brightspace.fetch` and `brightspace.api` (use Brightspace's D2L Valence API directly) and `outlook.inbox`.
+- Railway kit: a browser signed in to Vanderbilt and Microsoft 365 for the agent. Microsoft's Playwright MCP server runs in-process with its own Chromium and its tools are offered as `browser.*` on the same endpoint; vutoolkit loads its sessions into it and re-mints one when a page lands on a sign-in page. Tools that expose cookies or storage, run arbitrary code, or write files only the server can read are not offered.
+- `record.fetch` now returns `verification` (recomputed against Vanderbilt's posted term and cumulative GPAs) with the transcript, and `grades.whatif` reads the live record when no transcript is passed. `gpa.verify` and `record.fetch`'s `fixturePath` are removed.
+- `sessions.ensure` takes `force: true` in place of `sessions.refresh`.
+- Remove `scheduler.cartPlan` (a pure diff the agent can compute; the YES extension keeps its own cart logic), the write guard nothing used, the Brightspace client, the Outlook inbox reader, the leftover Microsoft Graph credential kind, and the skill guidance for Graph tools that no longer exist. The skill now says which tool to use for what.
+
 ## 0.5.2
 
 - Keep waiting while Okta shows its "Haven't received a push notification yet?" hint; it sits in the form's error container but is not a rejection, and `setup.run` used to stop there with `OKTA_REJECTED` while the push was still pending.

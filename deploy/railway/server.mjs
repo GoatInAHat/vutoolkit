@@ -1,16 +1,33 @@
 // Remote MCP server for vutoolkit in a container (Railway). Serves the generated MCP handler on
-// $PORT with bearer-token auth, a /healthz route for the platform, and, when enabled, runs the
-// one-time Vanderbilt setup by itself so no agent has to drive it. See README.md.
+// $PORT with bearer-token auth, a /healthz route for the platform, a signed-in browser (browser.mjs)
+// and, when enabled, runs the one-time Vanderbilt setup by itself so no agent has to drive it.
+// See README.md.
 import { createServer } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 
 const root = new URL("../../", import.meta.url);
+const log = (message) => console.error(`[vutoolkit] ${message}`);
 const { operations } = await import(new URL("dist/ops.js", root).href);
-const { handler } = await import(new URL("dist/toolfactory/mcp.js", root).href);
 const { context } = await import(new URL("dist/toolfactory/config.js", root).href);
 
-const log = (message) => console.error(`[vutoolkit] ${message}`);
+// The signed-in browser's tools join the operation list before the MCP handler reads it.
+if (process.env.VUTOOLKIT_BROWSER !== "0") {
+  try {
+    const { browserOperations } = await import("./browser.mjs");
+    const { ensureSession } = await import(new URL("dist/sso/ensure.js", root).href);
+    const { vaultStore } = await import(new URL("dist/http/with-session.js", root).href);
+    const { z } = createRequire(new URL("package.json", root))("zod");
+    const ctx = context();
+    const browser = await browserOperations({ z, ensureSession, store: () => vaultStore(ctx), dataDir: ctx.dataDir, log });
+    operations.push(...browser);
+    log(`browser: ${browser.length} tools ready`);
+  } catch (error) {
+    log(`browser: unavailable (${error?.message ?? error}); serving without it`);
+  }
+}
+const { handler } = await import(new URL("dist/toolfactory/mcp.js", root).href);
 const token = process.env.VUTOOLKIT_MCP_TOKEN;
 if (!token) {
   log("VUTOOLKIT_MCP_TOKEN is not set; refusing to serve an unauthenticated MCP endpoint.");

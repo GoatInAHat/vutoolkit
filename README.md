@@ -14,14 +14,15 @@ This is an independent, community-developed project, not an official Vanderbilt 
 
 | Capability | Operations | Scope |
 | --- | --- | --- |
-| OneVU and Microsoft sessions | `sessions.ensure`, `sessions.refresh`, `sessions.list` | Passkey-based authentication, cached sessions, and liveness checks |
+| OneVU and Microsoft sessions | `sessions.ensure`, `sessions.list` | Passkey-based authentication, cached sessions, and liveness checks |
 | Session interoperability | `sessions.ingest`, `sessions.open`, `sessions.forget` | Cookie, CDP, and Playwright formats for authorized clients |
-| Academic record | `record.fetch` | Historical grades and current courses from YES |
-| GPA planning | `gpa.verify`, `grades.whatif` | Compare calculated GPA with the official record before projecting hypothetical grades |
-| Outlook inbox | `outlook.inbox` | Recent conversation summaries through the signed-in Outlook web session |
+| Any Vanderbilt or Microsoft 365 API | `request` | One HTTP request as the signed-in student (Brightspace's D2L API, YES, Outlook on the web); the session rides every sign-in hop and is re-minted when refused |
+| Signed-in browser (remote deployment) | `browser.*` | Microsoft's Playwright MCP tools in a browser kept signed in to Vanderbilt and Microsoft 365; see [deploy/railway](deploy/railway/README.md) |
+| Academic record | `record.fetch` | Historical grades and current courses from YES, checked against Vanderbilt's posted GPAs |
+| GPA planning | `grades.whatif` | Project hypothetical grades onto the live record |
 | Degree and course data | `degree.audit`, `degree.graph`, `degree.options`, `courses.*` | Official YES requirements, course alternatives, prerequisite descriptions, and section metadata |
 | Prerequisite planning | `planner.graph` | Directed AND/OR graph, completed/planned courses, weighted alternatives, explicit unknowns |
-| Schedule planning | `scheduler.solve`, `scheduler.cartPlan` | Conflict-free combinations, lecture/lab components, free-time preferences, and cart-only diffs |
+| Schedule planning | `scheduler.solve` | Conflict-free combinations, lecture/lab components, and free-time preferences |
 | Professor metadata | `professors.search` | Public Vanderbilt Rate My Professors candidates, preserving namesake ambiguity |
 | Account setup | `setup.run`, `setup.identity`, `setup.status` | Deterministic one-call setup, session reuse, vaulted password support, and explicit recovery; see acceptance evidence |
 | Web interface | `web` | Interactive degree/prerequisite graph, course details, setup, and operation explorer |
@@ -42,15 +43,15 @@ npm --prefix web ci
 npm --prefix web run build
 ```
 
-Try a credential-free GPA check, start an MCP server, or open the web interface:
+Try a credential-free GPA projection, start an MCP server, or open the web interface:
 
 ```sh
-node dist/toolfactory/cli.js gpa.verify --json '{}'
+node dist/toolfactory/cli.js grades.whatif --json '{"transcript":{"terms":[{"term":"Fall","courses":[{"course":"MATH 1300","credits":4,"grade":"B+"}]}]},"hypotheticals":[{"course":"MATH 1300","grade":"A"}]}'
 node dist/toolfactory/cli.js mcp
 node dist/toolfactory/cli.js mcp --http --open
 ```
 
-The default GPA fixture is synthetic. It validates the calculation path, **not** your live Vanderbilt record. For a real projection, call `record.fetch`, pass its transcript to `gpa.verify`, then supply that same transcript and your hypothetical grades to `grades.whatif`.
+For a real projection, call `record.fetch` and check that `verification.ok` is true (the recomputed GPAs match Vanderbilt's posted ones), then call `grades.whatif` with your hypothetical grades; it reads the live record itself.
 
 ### Authentication
 
@@ -64,13 +65,13 @@ Browser selection: an explicit `VUTOOLKIT_CDP_URL` takes precedence, then `VUTOO
 
 OpenClaw 2026.10.7 dismisses modal WebAuthn requests in headless profiles attached to its page-automation layer. This also cancels virtual-authenticator assertions before OneVU can validate them. `BROWSER_WEBAUTHN_BLOCKED` identifies that known injected guard; it is not evidence of a revoked passkey and must not trigger credential recovery. Keep toolkit authentication in a dedicated managed CDP profile (for example `openclaw browser create-profile --name vutoolkit-auth`), used through the toolkit's raw CDP driver rather than OpenClaw page automation, or use a supported headed browser. Do not attach the headless authentication profile to general browser snapshots or page automation, which installs the guard. No browser policy is disabled or bypassed by the toolkit.
 
-Set `VUTOOLKIT_BROWSER_PROFILE=vutoolkit-auth` in the toolkit host's environment. If also pinning `VUTOOLKIT_CDP_URL`, use that profile's actual endpoint: an explicitly paired profile may be restarted only when its configured endpoint matches exactly. A mismatch fails closed. A CDP URL without a paired profile remains attach-only. Neither session metadata's cached `healthy` flag nor `setup.status` proves live authentication; verify with `sessions.refresh` and a read-only service request.
+Set `VUTOOLKIT_BROWSER_PROFILE=vutoolkit-auth` in the toolkit host's environment. If also pinning `VUTOOLKIT_CDP_URL`, use that profile's actual endpoint: an explicitly paired profile may be restarted only when its configured endpoint matches exactly. A mismatch fails closed. A CDP URL without a paired profile remains attach-only. Neither session metadata's cached `healthy` flag nor `setup.status` proves live authentication; verify with `sessions.ensure({"force":true})` and a read-only `request`.
 
 Standalone deployments can inject `VUTOOLKIT_VU_EMAIL`, `VUTOOLKIT_PASSKEY_JSON`, and `VUTOOLKIT_CDP_URL` through their own secret manager. Existing healthy sessions are reused.
 
 Each person needs their **own** Vanderbilt account and passkey. Use separate host secret vaults and `VUTOOLKIT_DATA_DIR` values when serving multiple people; do not copy one student's sessions to another person's installation.
 
-For a passkey-backed mailbox read, call `outlook.inbox`. It reads recent conversation summaries from Outlook on the web and checks the configured mailbox identity. Microsoft session readiness uses Outlook’s own authenticated response.
+Outlook and other Microsoft 365 services are reached with `request` (or the remote deployment's browser) on the Microsoft session, which federates through OneVU. Minting that session checks Outlook's own startup response for the configured mailbox.
 
 ### Credential cache storage
 
@@ -155,7 +156,7 @@ The generated commands below describe the selected distribution surfaces, not pr
 - **Browser extension** — from a checkout: `npm --prefix hosts/browser install && npm --prefix hosts/browser exec --no -- wxt build`,
   then `chrome://extensions` → developer mode → Load unpacked → `hosts/browser/.output/chrome-mv3`
   (Firefox: `npm --prefix hosts/browser exec --no -- web-ext run`). Each GitHub Release attaches the
-  store uploads `vutoolkit-0.5.2-chrome.zip`, `vutoolkit-0.5.2-firefox.zip`, `vutoolkit-0.5.2-edge.zip`. When Firefox signing credentials are configured, it also attaches a
+  store uploads `vutoolkit-0.6.0-chrome.zip`, `vutoolkit-0.6.0-firefox.zip`, `vutoolkit-0.6.0-edge.zip`. When Firefox signing credentials are configured, it also attaches a
   Mozilla-signed `.xpi`; the Chrome Web Store, Firefox Add-ons and Edge Add-ons listings appear once the release's
   submit step has each store's credentials. Then pair it: `npx -y vutoolkit mcp --http --pair`
   prints the `<url>#<token>` the extension's options page accepts.

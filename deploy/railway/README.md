@@ -1,8 +1,8 @@
 # Remote vutoolkit on Railway
 
 Runs vutoolkit as a remote MCP server (for a claude.ai custom connector or any MCP client) in one
-container, with its own headless Chromium for the OneVU passkey ceremony. Nothing here needs
-OpenClaw.
+container, with its own headless Chromium for the OneVU passkey ceremony and a second, separate
+browser that the agent drives while signed in as the student. Nothing here needs OpenClaw.
 
 ## What the entrypoint does
 
@@ -16,12 +16,30 @@ OpenClaw.
    and falling back to the environment variable of the same name on `get`. This is how the
    passkey's sign counter and a newly enrolled passkey persist on the volume.
 3. Runs `server.mjs`: the generated MCP handler on `$PORT` (bearer token required), `/healthz`,
-   `sessions.open` withheld from MCP (raw cookies stay on the host; the fetch tools still use
-   them), and, with `VUTOOLKIT_AUTO_SETUP=1`, the one-time setup on its own.
+   `sessions.open` withheld from MCP (raw cookies stay on the host; `request` and the browser
+   still use them), the signed-in browser's `browser.*` tools, and, with `VUTOOLKIT_AUTO_SETUP=1`,
+   the one-time setup on its own.
+
+## The signed-in browser
+
+`browser.mjs` runs Microsoft's [Playwright MCP](https://github.com/microsoft/playwright-mcp) server
+in-process (pinned in `package.json` here) and offers its tools over the same endpoint as
+`browser.navigate`, `browser.snapshot`, `browser.click` and so on. Before the first call, and at
+most every 30 minutes, it loads vutoolkit's Vanderbilt and Microsoft sessions into that browser;
+when a page lands on the OneVU or Microsoft sign-in page anyway, it re-mints that session with the
+toolkit passkey and opens the page again. It launches its own Chromium (`VUTOOLKIT_BROWSER_EXECUTABLE`,
+set by `start.sh`), never the ceremony browser, because Chromium switches off a tab's passkey helper
+when another DevTools client detaches from it.
+
+Not offered: the cookie and storage tools and `run_code_unsafe` (session values and code
+execution stay on the server), tools whose output is a file on this server (screenshots, PDFs,
+uploads), and test-harness controls (request mocking, offline mode, media emulation). Cookie and
+authorization header lines are redacted from every result. Set `VUTOOLKIT_BROWSER=0` to turn the
+browser off.
 
 ## Service settings
 
-- Build: Railpack, build command `npm run build`.
+- Build: Railpack, build command `npm run build && npm ci --prefix deploy/railway`.
 - Start command: `sh deploy/railway/start.sh`.
 - Healthcheck path: `/healthz`.
 - Volume mounted at `/data`.

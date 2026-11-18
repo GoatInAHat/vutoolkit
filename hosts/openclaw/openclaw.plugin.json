@@ -2,7 +2,7 @@
   "id": "vutoolkit",
   "name": "Vutoolkit",
   "description": "Universal toolkit for Vanderbilt student life - OneVU SSO and passkey sessions, what-if grades, YES tools; built for AI agents first.",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -14,7 +14,7 @@
           "openclaw"
         ],
         "default": "file",
-        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions and Graph tokens in the native vault; file preserves standalone 0600 storage."
+        "description": "Credential cache backend. Select openclaw on OpenClaw hosts to store sessions in the native vault; file preserves standalone 0600 storage."
       }
     }
   },
@@ -23,28 +23,23 @@
   },
   "contracts": {
     "tools": [
-      "vutoolkit_brightspace_api",
-      "vutoolkit_brightspace_fetch",
       "vutoolkit_courses_detail",
       "vutoolkit_courses_search",
       "vutoolkit_courses_sections",
       "vutoolkit_degree_audit",
       "vutoolkit_degree_graph",
       "vutoolkit_degree_options",
-      "vutoolkit_gpa_verify",
       "vutoolkit_grades_whatif",
-      "vutoolkit_outlook_inbox",
       "vutoolkit_planner_graph",
       "vutoolkit_professors_search",
       "vutoolkit_record_fetch",
-      "vutoolkit_scheduler_cartPlan",
+      "vutoolkit_request",
       "vutoolkit_scheduler_solve",
       "vutoolkit_sessions_ensure",
       "vutoolkit_sessions_forget",
       "vutoolkit_sessions_ingest",
       "vutoolkit_sessions_list",
       "vutoolkit_sessions_open",
-      "vutoolkit_sessions_refresh",
       "vutoolkit_setup_enroll",
       "vutoolkit_setup_identity",
       "vutoolkit_setup_prepare",

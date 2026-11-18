@@ -16,7 +16,7 @@
 import type { CookieRecord } from "../vault/file-store.js";
 import { CLICK_VISIBLE, FILL_NATIVE, harvestCookies, withCdpTab } from "./cdp-driver.js";
 import { AuthError } from "./errors.js";
-import { OUTLOOK_INBOX, watchOutlookInbox } from "../outlook/inbox.js";
+import { OUTLOOK_INBOX, watchOutlookStartup } from "./outlook-startup.js";
 
 /**
  * Raised when minting is impossible without a human credential decision (a Microsoft password
@@ -190,7 +190,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
   const startUrl = opts.startUrl ?? OUTLOOK_INBOX;
   return withCdpTab(opts.cdpUrl, opts.verify ? startUrl : "about:blank", async (tab) => {
     const { evaluate, send } = tab;
-    const inbox = opts.verify ? undefined : await watchOutlookInbox(tab, opts.email);
+    const inbox = opts.verify ? undefined : await watchOutlookStartup(tab, opts.email);
     if (inbox) await send("Page.navigate", { url: startUrl });
     const deadline = Date.now() + timeoutMs;
     let identifierFills = 0;

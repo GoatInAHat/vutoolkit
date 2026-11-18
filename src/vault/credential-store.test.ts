@@ -8,7 +8,6 @@ import { credentialSecretName, credentialStorage, migrateCredentialCaches, Nativ
 
 const dirs: string[] = [];
 const fresh = () => { const dir = mkdtempSync(join(tmpdir(), "vutoolkit-native-vault-")); dirs.push(dir); return dir; };
-const token = { accessToken: "synthetic-token", acquiredAtMs: 10, expiresAtMs: 1_000_000 };
 const session = harvestToStoredSession("microsoft", [{ name: "ESTS", value: "synthetic-cookie", domain: "login.microsoftonline.com" }], "2026-10-09T00:00:00Z");
 function fixture() {
   const values = new Map<string, string>();
@@ -40,7 +39,7 @@ describe("native credential storage", () => {
     await store.put(session);
     expect(existsSync(join(dir, "sessions.vault.json"))).toBe(true);
     expect(credentialSecretName(dir, "sessions_microsoft")).not.toBe(credentialSecretName(fresh(), "sessions_microsoft"));
-    expect(() => credentialStorage(dir, "graph", { VUTOOLKIT_CREDENTIAL_STORE: "typo" })).toThrow(/must be/);
+    expect(() => credentialStorage(dir, "sessions_vanderbilt", { VUTOOLKIT_CREDENTIAL_STORE: "typo" })).toThrow(/must be/);
     expect(sessionStore(dir, {}).location).toBe(join(dir, "sessions.vault.json"));
   });
 
@@ -63,41 +62,40 @@ describe("native credential storage", () => {
     expect(await sessionStore(dir, env).get("microsoft")).toBeNull();
   });
 
-  it("migrates both caches with exact readback while preserving originals and returning metadata only", async () => {
+  it("migrates the session cache with exact readback while preserving the original and returning metadata only", async () => {
     const dir = fresh(); const { values, secrets } = fixture();
     const sessionsRaw = JSON.stringify({ version: 1, rows: { microsoft: session } });
     writeFileSync(join(dir, "sessions.vault.json"), sessionsRaw);
-    writeFileSync(join(dir, "graph-token.json"), JSON.stringify(token));
-    const guarded = credentialStorage(dir, "graph", { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }, secrets)!;
+    const guarded = credentialStorage(dir, "sessions_microsoft", { VUTOOLKIT_CREDENTIAL_STORE: "openclaw" }, secrets)!;
     expect(() => guarded.read()).toThrow(/migration/);
-    await expect(guarded.write(JSON.stringify(token))).rejects.toThrow(/migration/);
+    await expect(guarded.write(JSON.stringify(session))).rejects.toThrow(/migration/);
     const result = await migrateCredentialCaches(dir, secrets);
-    expect(result.migrated).toHaveLength(3);
+    expect(result.migrated).toHaveLength(2);
     expect(result.originalsPreserved).toBe(true);
-    expect(JSON.stringify(result)).not.toMatch(/synthetic-token|synthetic-cookie/);
+    expect(JSON.stringify(result)).not.toMatch(/synthetic-cookie/);
     expect(values.get(credentialSecretName(dir, "sessions_microsoft"))).toBe(JSON.stringify(session));
-    expect(guarded.read()).toBe(JSON.stringify(token));
+    expect(guarded.read()).toBe(JSON.stringify(session));
     expect(readFileSync(join(dir, "sessions.vault.json"), "utf8")).toBe(sessionsRaw);
     expect(await migrateCredentialCaches(dir, secrets)).toEqual(result);
   });
 
   it("preserves originals on failed readback and rejects conflicting existing native values", async () => {
     const dir = fresh(); const { values, secrets } = fixture();
-    const path = join(dir, "graph-token.json"); const raw = JSON.stringify(token);
+    const path = join(dir, "sessions.vault.json"); const raw = JSON.stringify({ version: 1, rows: { microsoft: session } });
     writeFileSync(path, raw);
     const broken: NativeSecrets = { read: () => null, write: async () => {} };
     await expect(migrateCredentialCaches(dir, broken)).rejects.toThrow(/readback/);
     expect(readFileSync(path, "utf8")).toBe(raw);
-    values.set(credentialSecretName(dir, "graph"), "different-synthetic-value");
+    values.set(credentialSecretName(dir, "sessions_microsoft"), "different-synthetic-value");
     await expect(migrateCredentialCaches(dir, secrets)).rejects.toThrow(/differs/);
-    expect(values.get(credentialSecretName(dir, "graph"))).toBe("different-synthetic-value");
+    expect(values.get(credentialSecretName(dir, "sessions_microsoft"))).toBe("different-synthetic-value");
     expect(readFileSync(path, "utf8")).toBe(raw);
   });
 
   it("detects old-writer activity during migration and never deletes the original", async () => {
-    const dir = fresh(); const { secrets } = fixture(); const path = join(dir, "graph-token.json");
-    writeFileSync(path, JSON.stringify(token));
-    const updated = JSON.stringify({ ...token, accessToken: "synthetic-newer-token" });
+    const dir = fresh(); const { secrets } = fixture(); const path = join(dir, "sessions.vault.json");
+    writeFileSync(path, JSON.stringify({ version: 1, rows: { microsoft: session } }));
+    const updated = JSON.stringify({ version: 1, rows: {} });
     const concurrent: NativeSecrets = { ...secrets, async write(name, value) { await secrets.write(name, value); writeFileSync(path, updated); } };
     await expect(migrateCredentialCaches(dir, concurrent)).rejects.toThrow(/changed during migration/);
     expect(readFileSync(path, "utf8")).toBe(updated);

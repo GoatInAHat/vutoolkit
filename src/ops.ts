@@ -1,30 +1,29 @@
 /**
  * vutoolkit's operations: pure functions of (JSON arguments, environment/config, filesystem).
  * Host-provided capabilities are declared with `requires`; toolfactory decides per surface
- * whether each operation is native, bridged, degraded, or excluded. Anything touching session
- * values or passkey material goes through the vault contract (src/vault/index.ts) and is
- * honestly gated until their wiring lands. Session operations use the configured
- * credential backend; sessions.refresh re-mints through the same store plus the
- * CDP ceremony (OneVU passkey or Microsoft Entra carry).
+ * whether each operation is native, bridged, degraded, or excluded.
+ *
+ * The toolkit's job is the session: minting it (OneVU passkey ceremony, Microsoft Entra carry),
+ * keeping it alive and riding it through each service's sign-in dance. `request` hands the agent
+ * any Vanderbilt or Microsoft web API on that session directly; the remaining operations exist
+ * only where the toolkit adds something the raw API does not (a parsed transcript, GPA math,
+ * the official degree audit, conflict-free schedules).
  */
 import { withCallerBudget } from "./sso/budget.js";
 import { readFileSync } from "node:fs";
 import { yesOperations } from "./yes/operations.js";
 import { z } from "zod";
-import { verifyTranscript, whatIf } from "./gpa/engine.js";
-import { SYNTHETIC_TRANSCRIPT } from "./gpa/fixtures.js";
-import { YesClient, YesNotConfiguredError } from "./yes/client.js";
+import { verifyTranscript, whatIf, type Transcript } from "./gpa/engine.js";
+import { academicRecord } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
-import { sessionStore, harvestToStoredSession } from "./vault/file-store.js";
-import { defaultSecretsRead, ensureSession } from "./sso/ensure.js";
-import { inboxConversation, readOutlookInbox } from "./outlook/inbox.js";
-import { ensureBrowser, resolveBrowser } from "./sso/browser-config.js";
-import { AuthError } from "./sso/errors.js";
-import { operation, type Context } from "./toolfactory/types.js";
+import { harvestToStoredSession, idpForHost } from "./vault/file-store.js";
+import { ensureSession } from "./sso/ensure.js";
+import { operation, type Context, type Operation } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
-import { credentialEnv } from "./vault/credential-store.js";
-import { BrightspaceClient, BrightspaceNotConfiguredError } from "./brightspace/client.js";
+import { CookieJar, sessionFetch } from "./http/session-fetch.js";
+import { vaultStore, withSession } from "./http/with-session.js";
 
+const idp = z.enum(["vanderbilt", "microsoft"]);
 const transcriptSchema = z.object({
   postedCumulativeGpa: z.number().optional(),
   terms: z.array(
@@ -42,92 +41,103 @@ const transcriptSchema = z.object({
     }),
   ),
 });
-type TranscriptArgs = z.infer<typeof transcriptSchema>;
+const verificationSchema = z.object({
+  ok: z.boolean(),
+  rows: z.array(z.object({ term: z.string(), posted: z.number(), recomputed: z.number().nullable(), match: z.boolean() })),
+  cumulative: z.number().nullable(),
+  cumulativeCheck: z.object({ posted: z.number().nullable(), recomputed: z.number().nullable(), match: z.boolean().nullable() }),
+  note: z.string(),
+});
+const sessionResult = z.object({
+  source: z.enum(["cache", "minted"]),
+  idp,
+  acquiredAt: z.string(),
+  expiresAt: z.string().optional(),
+  healthy: z.boolean(),
+  finalUrl: z.string().optional(),
+  passkeyVerified: z.boolean().optional(),
+  assertedSignCount: z.number().optional(),
+});
 
-const vaultStore = (ctx: Context) => sessionStore(ctx.dataDir, credentialEnv(ctx.config));
+const liveRecord = (ctx: Context): Promise<Transcript> => withSession(ctx, ["vanderbilt"], (cookies) => academicRecord(cookies));
 
-export const operations = [
+const authored: Operation[] = [
   ...setupOperations,
   ...yesOperations,
+  operation({
+    name: "request",
+    description:
+      "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or Outlook on the web. Cookie values never appear in the result. A non-GET request acts on the student's account: send one only for something the student asked for.",
+    input: z.object({
+      url: z.string().url().describe("Absolute https URL on a Vanderbilt or Microsoft 365 host"),
+      method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
+      headers: z.record(z.string(), z.string()).optional().describe("Extra request headers (a Cookie header is ignored)"),
+      body: z.string().optional().describe("Request body, sent as given; set content-type in headers"),
+      maxChars: z.number().int().min(100).max(200_000).default(20_000).describe("Bound on the returned response text"),
+    }),
+    output: z.object({
+      status: z.number(),
+      url: z.string(),
+      contentType: z.string(),
+      headers: z.record(z.string(), z.string()),
+      text: z.string(),
+      truncated: z.boolean(),
+      trace: z.array(z.string()),
+    }),
+    requires: ["net", "secret"],
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    handler: async ({ url, method, headers, body, maxChars }, ctx) => {
+      const target = new URL(url);
+      const owner = target.protocol === "https:" ? idpForHost(target.hostname) : null;
+      if (!owner) throw new Error(`request only reaches https Vanderbilt or Microsoft 365 hosts; ${target.protocol}//${target.hostname} is neither`);
+      const res = await withSession(ctx, [owner], (cookies) =>
+        sessionFetch({ url, method, headers, body }, { jar: new CookieJar(cookies) }),
+      );
+      return { ...res, text: res.text.slice(0, maxChars), truncated: res.text.length > maxChars };
+    },
+  }),
   operation({
     name: "sessions.list",
     description:
       "Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expiry, health). Session values never leave the vault.",
     input: z.object({}),
     output: z.object({
-      sessions: z.array(
-        z.object({
-          idp: z.string(),
-          acquiredAt: z.string(),
-          expiresAt: z.string().optional(),
-          healthy: z.boolean(),
-        }),
-      ),
+      sessions: z.array(z.object({ idp: z.string(), acquiredAt: z.string(), expiresAt: z.string().optional(), healthy: z.boolean() })),
     }),
     annotations: { readOnlyHint: true },
     handler: async (_args, ctx) => ({ sessions: await vaultStore(ctx).list() }),
   }),
   operation({
+    name: "sessions.ensure",
+    description:
+      "Return the cached session for the IdP when it still works, or mint a fresh one and cache it: the OneVU passkey ceremony for vanderbilt, the Entra carry for microsoft. force=true re-mints even a working session; a failed mint keeps the current one. Other operations call this themselves, so it is only needed to warm or repair a session.",
+    input: z.object({ idp, force: z.boolean().default(false) }),
+    output: sessionResult,
+    requires: ["secret", "net"],
+    handler: async ({ idp, force }, ctx) => ensureSession(idp, vaultStore(ctx), force ? { forceRefresh: true } : {}),
+  }),
+  operation({
     name: "sessions.open",
     description:
-      "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else.",
-    input: z.object({
-      idp: z.enum(["vanderbilt", "microsoft"]),
-      format: z.enum(["cookie-header", "cdp", "storage-state"]).default("cookie-header"),
-    }),
+      "Injection payload for a stored session, for a local browser on the student's own machine: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Never logged or echoed anywhere else. Remote deployments do not offer it.",
+    input: z.object({ idp, format: z.enum(["cookie-header", "cdp", "storage-state"]).default("cookie-header") }),
     output: z.object({ payload: z.unknown() }),
     requires: ["secret", "net"],
     handler: async ({ idp, format }, ctx) => {
       const store = vaultStore(ctx);
-      // Serve only a live session: ensure re-mints a missing or dead one before the payload is built.
       await ensureSession(idp, store);
       const session = await store.get(idp);
       if (!session) throw vaultNotWired(`sessions.open(${idp}): the session vault holds no session after ensure`);
       if (format === "cookie-header") return { payload: session.cookieHeader };
-      if (format === "cdp") {
-        return {
-          payload: store.cookies(idp).map(({ name, value, domain, path, expires, httpOnly, secure, sameSite }) => ({
-            name, value, domain, path, expires, httpOnly, secure, sameSite,
-          })),
-        };
-      }
-      return {
-        payload: {
-          cookies: store.cookies(idp).map((c) => ({ ...c, expires: c.expires ?? -1 })),
-          origins: [],
-        },
-      };
-    },
-  }),
-  operation({
-    name: "sessions.refresh",
-    description:
-      "Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry.",
-    input: z.object({
-      idp: z.enum(["vanderbilt", "microsoft"]).default("vanderbilt"),
-    }),
-    output: z.object({
-      source: z.literal("minted"),
-      idp: z.enum(["vanderbilt", "microsoft"]),
-      acquiredAt: z.string(),
-      expiresAt: z.string().optional(),
-      healthy: z.boolean(),
-      finalUrl: z.string().optional(),
-      passkeyVerified: z.boolean().optional(),
-      assertedSignCount: z.number().optional(),
-    }),
-    requires: ["secret", "net"],
-    handler: async ({ idp }, ctx) => {
-      const store = vaultStore(ctx);
-      const result = await ensureSession(idp, store, { forceRefresh: true });
-      return { ...result, source: "minted" as const };
+      const cookies = store.cookies(idp);
+      if (format === "cdp") return { payload: cookies };
+      return { payload: { cookies: cookies.map((c) => ({ ...c, expires: c.expires ?? -1 })), origins: [] } };
     },
   }),
   operation({
     name: "sessions.forget",
-    description:
-      "Drop a cached session: removes its row (metadata and values) from the session vault.",
-    input: z.object({ idp: z.enum(["vanderbilt", "microsoft"]) }),
+    description: "Drop a cached session: removes its row (metadata and values) from the session vault.",
+    input: z.object({ idp }),
     output: z.object({ removed: z.boolean() }),
     handler: async ({ idp }, ctx) => {
       const store = vaultStore(ctx);
@@ -139,19 +149,12 @@ export const operations = [
   operation({
     name: "sessions.ingest",
     description:
-      "Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.",
+      "Ingest a harvested browser cookie export into the session store: keeps only cookies in the IdP's domain scope and reports metadata only.",
     input: z.object({
-      idp: z.enum(["vanderbilt", "microsoft"]),
-      sourcePath: z.string().describe(
-        "Path to the harvested cookie JSON: a CDP cookie array, {cookies:[...]}, or {cookieHeader}",
-      ),
+      idp,
+      sourcePath: z.string().describe("Path to the harvested cookie JSON: a CDP cookie array, {cookies:[...]}, or {cookieHeader}"),
     }),
-    output: z.object({
-      idp: z.enum(["vanderbilt", "microsoft"]),
-      ingested: z.number(),
-      acquiredAt: z.string(),
-      expiresAt: z.string().optional(),
-    }),
+    output: z.object({ idp, ingested: z.number(), acquiredAt: z.string(), expiresAt: z.string().optional() }),
     requires: ["secret", "fs"],
     handler: async ({ idp, sourcePath }, ctx) => {
       const raw: unknown = JSON.parse(readFileSync(sourcePath, "utf8"));
@@ -161,202 +164,36 @@ export const operations = [
     },
   }),
   operation({
-    name: "sessions.ensure",
-    description:
-      "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed.",
-    input: z.object({ idp: z.enum(["vanderbilt", "microsoft"]) }),
-    output: z.object({
-      source: z.enum(["cache", "minted"]),
-      idp: z.enum(["vanderbilt", "microsoft"]),
-      acquiredAt: z.string(),
-      expiresAt: z.string().optional(),
-      healthy: z.boolean(),
-      finalUrl: z.string().optional(),
-      passkeyVerified: z.boolean().optional(),
-      assertedSignCount: z.number().optional(),
-    }),
-    requires: ["secret", "net"],
-    handler: async ({ idp }, ctx) => ensureSession(idp, vaultStore(ctx)),
-  }),
-  operation({
-    name: "outlook.inbox",
-    description: "Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.",
-    input: z.object({ limit: z.number().int().min(1).max(25).default(10) }),
-    output: z.object({ conversations: z.array(inboxConversation) }),
-    requires: ["net", "secret"],
-    annotations: { readOnlyHint: true },
-    handler: async ({ limit }, ctx) => {
-      const env = credentialEnv(ctx.config);
-      const email = env.VUTOOLKIT_VU_EMAIL || defaultSecretsRead("VANDERBILT_EMAIL");
-      const browser = await resolveBrowser(env);
-      await ensureBrowser(browser);
-      let inbox = await readOutlookInbox(browser.cdpUrl, email);
-      if (!inbox) {
-        await ensureSession("microsoft", vaultStore(ctx), { forceRefresh: true, env });
-        inbox = await readOutlookInbox(browser.cdpUrl, email);
-      }
-      if (!inbox) throw new AuthError("MICROSOFT_FLOW_CHANGED", "Outlook did not return an authenticated inbox response.", { retryable: true });
-      return { conversations: inbox.slice(0, limit) };
-    },
-  }),
-  operation({
     name: "record.fetch",
     description:
-      "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps.",
-    input: z.object({
-      fixturePath: z
-        .string()
-        .optional()
-        .describe("Read the transcript from this JSON file instead of live YES (dev/test)"),
-    }),
-    output: z.object({ transcript: transcriptSchema, source: z.enum(["fixture", "live"]) }),
+      "The student's YES academic record as a parsed transcript (posted terms plus in-progress unposted courses), with a check that recomputes each term's GPA and the cumulative GPA from the posted marks and compares them with Vanderbilt's own posted figures. Trust a what-if only when verification.ok is true.",
+    input: z.object({}),
+    output: z.object({ transcript: transcriptSchema, verification: verificationSchema }),
     requires: ["net", "secret"],
-    handler: async ({ fixturePath }, ctx) => {
-      if (fixturePath) {
-        const transcript = JSON.parse(readFileSync(fixturePath, "utf8")) as TranscriptArgs;
-        return { transcript, source: "fixture" as const };
-      }
-      const store = vaultStore(ctx);
-      const readRecord = () => new YesClient({ cookies: store.cookies("vanderbilt") }).academicRecord();
-      // ensureSession probes the cached session and re-mints it when dead, so the common case is
-      // one healthy fetch. The retry covers the narrow race where the session dies between the
-      // probe and this fetch: force a re-mint once before surfacing a failure to the agent.
-      await ensureSession("vanderbilt", store);
-      try {
-        return { transcript: await readRecord(), source: "live" as const };
-      } catch (e) {
-        // Re-mint once, but only when the failure is auth-shaped: a transient aai-record.ts
-        // parse/markup hiccup must not burn a cached session that was actually fine.
-        const msg = e instanceof Error ? e.message : String(e);
-        const authShaped = e instanceof YesNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
-        if (!authShaped) throw e;
-        await store.forget("vanderbilt");
-        await ensureSession("vanderbilt", store);
-        return { transcript: await readRecord(), source: "live" as const };
-      }
-    },
-  }),
-  operation({
-    name: "brightspace.fetch",
-    description:
-      "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable.",
-    input: z.object({
-      path: z
-        .string()
-        .describe("Path on brightspace.vanderbilt.edu, e.g. /d2l/home or /d2l/home/{orgUnitId}"),
-      maxChars: z.number().optional().describe("Text bound (default 8000)"),
-    }),
-    output: z.object({
-      status: z.number(),
-      finalUrl: z.string(),
-      title: z.string(),
-      text: z.string(),
-      trace: z.array(z.string()),
-    }),
-    requires: ["net", "secret"],
-    annotations: { readOnlyHint: true, idempotentHint: true },
-    handler: async ({ path, maxChars }, ctx) => {
-      const store = vaultStore(ctx);
-      const client = () => new BrightspaceClient({ cookies: store.cookies("vanderbilt") });
-      await ensureSession("vanderbilt", store);
-      try {
-        return await client().fetchPage(path, maxChars);
-      } catch (e) {
-        // Re-mint once, but only when the failure is auth-shaped: a D2L 404 must not burn the
-        // cached session (the ceremony needs a live browser hop).
-        const msg = e instanceof Error ? e.message : String(e);
-        const authShaped =
-          e instanceof BrightspaceNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
-        if (!authShaped) throw e;
-        await store.forget("vanderbilt");
-        await ensureSession("vanderbilt", store);
-        return await client().fetchPage(path, maxChars);
-      }
-    },
-  }),
-  operation({
-    name: "brightspace.api",
-    description:
-      "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable.",
-    input: z.object({
-      path: z
-        .string()
-        .describe("API path on brightspace.vanderbilt.edu, e.g. /d2l/api/lp/1.44/enrollments/myenrollments/"),
-      maxChars: z.number().optional().describe("Response text bound (default 16000)"),
-    }),
-    output: z.object({
-      status: z.number(),
-      contentType: z.string(),
-      text: z.string(),
-      finalUrl: z.string(),
-      trace: z.array(z.string()),
-    }),
-    requires: ["net", "secret"],
-    annotations: { readOnlyHint: true, idempotentHint: true },
-    handler: async ({ path, maxChars }, ctx) => {
-      const store = vaultStore(ctx);
-      const client = () => new BrightspaceClient({ cookies: store.cookies("vanderbilt") });
-      await ensureSession("vanderbilt", store);
-      try {
-        return await client().fetchApi(path, maxChars);
-      } catch (e) {
-        // Re-mint once on auth-shaped failures only (a D2L 404 must not burn the session).
-        const msg = e instanceof Error ? e.message : String(e);
-        const authShaped = e instanceof BrightspaceNotConfiguredError || /\b(401|403)\b|login|sso|auth|dance/i.test(msg);
-        if (!authShaped) throw e;
-        await store.forget("vanderbilt");
-        await ensureSession("vanderbilt", store);
-        return await client().fetchApi(path, maxChars);
-      }
+    annotations: { readOnlyHint: true },
+    handler: async (_args, ctx) => {
+      const transcript = await liveRecord(ctx);
+      return { transcript, verification: verifyTranscript(transcript) };
     },
   }),
   operation({
     name: "grades.whatif",
     description:
-      "Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs.",
+      "GPA projection: apply hypothetical grades (replacing posted ones, filling unposted ones) and report per-term and cumulative GPAs. Uses the student's live YES record unless a transcript is passed.",
     input: z.object({
-      transcript: transcriptSchema,
-      hypotheticals: z
-        .array(z.object({ course: z.string(), grade: z.string() }))
-        .default([]),
+      transcript: transcriptSchema.optional().describe("Omit to use the live YES record"),
+      hypotheticals: z.array(z.object({ course: z.string(), grade: z.string() })).default([]),
     }),
     output: z.object({
-      terms: z.array(
-        z.object({
-          term: z.string(),
-          gpa: z.number().nullable(),
-          gpaCredits: z.number(),
-          qualityPoints: z.number(),
-          changed: z.boolean(),
-        }),
-      ),
+      terms: z.array(z.object({ term: z.string(), gpa: z.number().nullable(), gpaCredits: z.number(), qualityPoints: z.number(), changed: z.boolean() })),
       cumulative: z.number().nullable(),
       cumulativeGpaCredits: z.number(),
       cumulativeQualityPoints: z.number(),
     }),
-    annotations: { readOnlyHint: true, idempotentHint: true },
-    handler: async ({ transcript, hypotheticals }) => whatIf(transcript, hypotheticals),
-  }),
-  operation({
-    name: "gpa.verify",
-    description:
-      "The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.",
-    input: z.object({ transcript: transcriptSchema.optional() }),
-    output: z.object({
-      ok: z.boolean(),
-      rows: z.array(
-        z.object({
-          term: z.string(),
-          posted: z.number(),
-          recomputed: z.number().nullable(),
-          match: z.boolean(),
-        }),
-      ),
-      cumulative: z.number().nullable(),
-      cumulativeCheck: z.object({ posted: z.number().nullable(), recomputed: z.number().nullable(), match: z.boolean().nullable() }),
-      note: z.string(),
-    }),
+    requires: ["net", "secret"],
     annotations: { readOnlyHint: true },
-    handler: async ({ transcript }) => verifyTranscript(transcript ?? SYNTHETIC_TRANSCRIPT),
+    handler: async ({ transcript, hypotheticals }, ctx) => whatIf(transcript ?? (await liveRecord(ctx)), hypotheticals),
   }),
-].map(op => withCallerBudget(op as import("./toolfactory/types.js").Operation));
+];
+
+export const operations = authored.map((op) => withCallerBudget(op));

@@ -51,7 +51,7 @@ backed by the cited evidence:
   setup acceptance").
 - A degree-planner graph and a direct operations explorer in the full-page view, covering
   official degree-audit requirements, course alternatives, prerequisite ranking, what-if GPA,
-  and Microsoft Graph access — all served by your own local kernel, not the extension.
+  and Microsoft 365 access — all served by your own local kernel, not the extension.
 - Nothing is sent to the developer or to any analytics/advertising service; the only non-local
   destinations the kernel talks to are Vanderbilt's, Microsoft's, and Rate My Professors'
   servers, for your own data (`PRIVACY.md`).
@@ -93,7 +93,7 @@ In its full-page view, it also gives you:
 - A guided "Connect Vanderbilt" setup flow that issues a passkey-backed session — no password
   typed into the extension.
 - Direct access to the same operations (what-if GPA verified against your official transcript,
-  Microsoft Graph, session export) that power the vutoolkit CLI and MCP server.
+  Microsoft 365, session export) that power the vutoolkit CLI and MCP server.
 
 How it works: this extension has no backend of its own. It pairs with a vutoolkit kernel that
 you run yourself — either the open-source `vutoolkit` package (`vutoolkit mcp --http`) or an
@@ -170,7 +170,7 @@ Field limits (per [Microsoft's publish-extension guidance](https://learn.microso
 **Suggested search terms** (≤21 words total; 18 words):
 ```
 Vanderbilt YES scheduler GPA planner degree audit prerequisite scheduling cart conflict
-professor ratings passkey SSO Microsoft Graph VandyScheduler
+professor ratings passkey SSO Microsoft 365 VandyScheduler
 ```
 
 **Suggested category:** Education (confirmed available in Edge Add-ons' category list alongside

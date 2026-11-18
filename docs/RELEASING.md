@@ -6,7 +6,7 @@
 
 1. Reconcile the requested features against [SPEC.md](SPEC.md). Record unfinished work honestly; a passing scaffold validator is not feature-completion evidence.
 2. Run the unit suite, TypeScript build, Tool Factory drift check, and selected surface validators. Use `npx toolfactory gate` for the native combined gate.
-3. Run the explicit live suite with the release account. Verify the account identity, both session chains, academic record, official GPA comparison, and read-only Graph calls. Keep the report to pass/fail and sanitized counts; never attach private account data to a release.
+3. Run the explicit live suite with the release account. Verify the account identity, both session chains, academic record, official GPA comparison, and a read-only Brightspace `request`. Keep the report to pass/fail and sanitized counts; never attach private account data to a release.
 4. Build packages with `npx toolfactory package`. Inspect the npm and OpenClaw tarballs, verify built web assets are present, and test installation outside the checkout. Host tarballs must reference the released core version, not `file:../..`.
 5. Commit the release inputs and generated changes, then tag the intended commit. A failed or skipped registry job is not a successful publication.
 6. Verify the npm version and provenance, ClawHub package/skill entries, GitHub release assets, and installed runtime versions independently. Test each installed host against its own account.

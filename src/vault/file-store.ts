@@ -38,6 +38,12 @@ const IDP_DOMAINS: Record<Idp, string[]> = {
   microsoft: ["microsoftonline.com", "microsoft.com", "live.com", "windows.net", "office.com", "office365.com", "cloud.microsoft"],
 };
 
+/** The IdP whose session covers this host, or null when neither does. */
+export function idpForHost(host: string): Idp | null {
+  for (const idp of Object.keys(IDP_DOMAINS) as Idp[]) if (belongsToIdp(host, idp)) return idp;
+  return null;
+}
+
 function belongsToIdp(domain: string, idp: Idp): boolean {
   const host = domain.toLowerCase().replace(/^\./, "");
   return IDP_DOMAINS[idp].some((suffix) => host === suffix || host.endsWith("." + suffix));

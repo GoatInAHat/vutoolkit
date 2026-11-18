@@ -1,5 +1,5 @@
 import type { CookieRecord } from "../vault/file-store.js";
-import { CookieJar, jarFetch } from "./jar.js";
+import { CookieJar, sessionFetch } from "../http/session-fetch.js";
 import { parseCourseDetail, parseCourseResults, parseSectionResults } from "./more-parser.js";
 
 export type JsonObject = { [key: string]: unknown };
@@ -21,10 +21,9 @@ export class YesPlanningClient {
   constructor(private readonly options: { cookies: CookieRecord[]; fetchImpl?: typeof fetch }) { this.jar = new CookieJar(options.cookies); }
 
   private async get(url: string) {
-    const result = await jarFetch(url, { jar: this.jar, fetchImpl: this.options.fetchImpl });
-    if (result.status !== 200 || new URL(result.finalUrl).hostname === "onevu.vanderbilt.edu") {
-      throw new Error(`YES planning read failed at ${new URL(url).pathname}: ${result.status === 200 ? "session requires refresh" : `HTTP ${result.status}`}`);
-    }
+    // A refused session throws SessionExpiredError from sessionFetch; withSession re-mints on it.
+    const result = await sessionFetch({ url }, { jar: this.jar, fetchImpl: this.options.fetchImpl });
+    if (result.status !== 200) throw new Error(`YES planning read failed at ${new URL(url).pathname}: HTTP ${result.status}`);
     return result;
   }
   private async auditSession() {

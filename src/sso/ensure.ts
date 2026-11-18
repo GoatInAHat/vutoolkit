@@ -312,7 +312,7 @@ export function ensureSession(idp: Idp, store: FileSessionStore, deps: EnsureDep
       // Joining a healthy-cache ensure must not turn a forced refresh into a fake mint.
       if (deps.forceRefresh && result.source === "cache") {
         const remaining = (deps.deadlineMs ?? ENSURE_DEADLINE_MS) - (Date.now() - started);
-        if (remaining <= 0) throw new AuthError("TIMEOUT", "sessions.refresh exhausted its caller budget", { retryable: true });
+        if (remaining <= 0) throw new AuthError("TIMEOUT", "the session refresh exhausted its caller budget", { retryable: true });
         return ensureSession(idp, store, { ...deps, deadlineMs: remaining });
       }
       return result;

@@ -56,14 +56,15 @@ identity and sessions live:
   your own OpenClaw secret vault, or — for a standalone install — from local files at `0600`
   permissions (`src/vault/file-store.ts`, `src/vault/credential-store.ts`). The kernel never
   accepts these as plain call arguments; see `src/vault/index.ts`.
-- **Session cookies for Vanderbilt SSO and Microsoft** (`sessions.ensure`, `sessions.refresh`,
+- **Session cookies for Vanderbilt SSO and Microsoft** (`sessions.ensure`,
   `sessions.ingest`, `src/vault/file-store.ts`): the raw `Cookie` header needed to reuse an
-  authenticated session, scoped to `vanderbilt.edu` and Microsoft's identity/Graph domains.
+  authenticated session, scoped to `vanderbilt.edu` and Microsoft 365's domains.
   Stored the same way as account identity (native vault or local `0600` file), never logged.
-- **Academic data fetched on your behalf, read-only**: your YES transcript and in-progress
-  courses (`record.fetch`), Brightspace data (`brightspace.fetch`/`brightspace.api`), degree
-  audit/planner data, and Microsoft Graph responses (`graph.call`) for the account you
-  authenticated as. The kernel does not persist a separate copy of this data beyond normal
+- **Data fetched on your behalf**: your YES transcript and in-progress courses
+  (`record.fetch`), degree audit/planner data, and whatever Vanderbilt or Microsoft 365 page or
+  API response you or your agent request with `request` or the remote deployment's `browser.*`
+  tools, for the account you authenticated as. The remote browser keeps its cookies and page
+  state on the deployment's own disk. The kernel does not persist a separate copy of this data beyond normal
   in-process handling of the request that asked for it; it is not written to a database or
   shipped anywhere outside your own session storage described above.
 
@@ -75,7 +76,7 @@ no such server.
 | Destination | What is sent | When |
 | --- | --- | --- |
 | Your local kernel (`127.0.0.1`/`localhost`, loopback only) | MCP requests with operation name and arguments (e.g. scraped YES page data for the scheduler, a pairing token for auth) | Every time the extension's background worker calls an operation (`hosts/browser/utils/mcp.ts`) |
-| `yes.vanderbilt.edu`, Vanderbilt SSO (OneVU), Microsoft identity/Graph endpoints | Your own session cookies/credentials, to read your own academic record, GPA inputs, degree audit, and Graph identity | Only from the kernel, only for read operations; see [ACCEPTANCE.md](ACCEPTANCE.md) for what is live-verified. The current release never performs enrollment and blocks cart-mutation requests in its live suite. |
+| `*.vanderbilt.edu` (YES, Brightspace, OneVU), Microsoft 365 | Your own session cookies/credentials, to act as you on the services you or your agent ask for | Only from the kernel. `request` and the browser can change things on your account (send, submit, post) when asked to; see [ACCEPTANCE.md](ACCEPTANCE.md) for what is live-verified. The current release never performs enrollment and blocks cart-mutation requests in its live suite. |
 | `www.ratemyprofessors.com` (`src/yes/professors.ts`) | A professor name search query only | When the scheduler UI looks up a professor's public rating. No Vanderbilt credential, cookie, student name, or identifier is included in this request — confirmed by `tests/live.test.ts` and the function's own request body. |
 
 Nothing is sent to the extension developer, to a vutoolkit-operated server, or to any

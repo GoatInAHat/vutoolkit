@@ -1,146 +1,6 @@
 {
   "tools": [
     {
-      "name": "brightspace.api",
-      "description": "Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "API path on brightspace.vanderbilt.edu, e.g. /d2l/api/lp/1.44/enrollments/myenrollments/"
-          },
-          "maxChars": {
-            "description": "Response text bound (default 16000)",
-            "type": "number"
-          },
-          "timeoutSeconds": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 570
-          }
-        },
-        "required": [
-          "path"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "number"
-          },
-          "contentType": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "finalUrl": {
-            "type": "string"
-          },
-          "trace": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "status",
-          "contentType",
-          "text",
-          "finalUrl",
-          "trace"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "_meta": {
-        "dev.toolfactory": {
-          "requires": [
-            "net",
-            "secret"
-          ]
-        }
-      }
-    },
-    {
-      "name": "brightspace.fetch",
-      "description": "Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Path on brightspace.vanderbilt.edu, e.g. /d2l/home or /d2l/home/{orgUnitId}"
-          },
-          "maxChars": {
-            "description": "Text bound (default 8000)",
-            "type": "number"
-          },
-          "timeoutSeconds": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 570
-          }
-        },
-        "required": [
-          "path"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "number"
-          },
-          "finalUrl": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "text": {
-            "type": "string"
-          },
-          "trace": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "status",
-          "finalUrl",
-          "title",
-          "text",
-          "trace"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "_meta": {
-        "dev.toolfactory": {
-          "requires": [
-            "net",
-            "secret"
-          ]
-        }
-      }
-    },
-    {
       "name": "courses.detail",
       "description": "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
@@ -622,169 +482,13 @@
       }
     },
     {
-      "name": "gpa.verify",
-      "description": "The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "transcript": {
-            "type": "object",
-            "properties": {
-              "postedCumulativeGpa": {
-                "type": "number"
-              },
-              "terms": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "term": {
-                      "type": "string"
-                    },
-                    "postedGpa": {
-                      "type": "number"
-                    },
-                    "courses": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "course": {
-                            "type": "string"
-                          },
-                          "credits": {
-                            "type": "number"
-                          },
-                          "gpaCredits": {
-                            "type": "number",
-                            "minimum": 0
-                          },
-                          "grade": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "course",
-                          "credits"
-                        ]
-                      }
-                    }
-                  },
-                  "required": [
-                    "term",
-                    "courses"
-                  ]
-                }
-              }
-            },
-            "required": [
-              "terms"
-            ]
-          }
-        },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          },
-          "rows": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "term": {
-                  "type": "string"
-                },
-                "posted": {
-                  "type": "number"
-                },
-                "recomputed": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "match": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "term",
-                "posted",
-                "recomputed",
-                "match"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "cumulative": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "cumulativeCheck": {
-            "type": "object",
-            "properties": {
-              "posted": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "recomputed": {
-                "type": [
-                  "number",
-                  "null"
-                ]
-              },
-              "match": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              }
-            },
-            "required": [
-              "posted",
-              "recomputed",
-              "match"
-            ],
-            "additionalProperties": false
-          },
-          "note": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "ok",
-          "rows",
-          "cumulative",
-          "cumulativeCheck",
-          "note"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false
-      },
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "_meta": {
-        "dev.toolfactory": {
-          "requires": []
-        }
-      }
-    },
-    {
       "name": "grades.whatif",
-      "description": "Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs.",
+      "description": "GPA projection: apply hypothetical grades (replacing posted ones, filling unposted ones) and report per-term and cumulative GPAs. Uses the student's live YES record unless a transcript is passed. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "transcript": {
+            "description": "Omit to use the live YES record",
             "type": "object",
             "properties": {
               "postedCumulativeGpa": {
@@ -856,11 +560,13 @@
                 "grade"
               ]
             }
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
-        "required": [
-          "transcript"
-        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "outputSchema": {
@@ -918,74 +624,6 @@
           "cumulative",
           "cumulativeGpaCredits",
           "cumulativeQualityPoints"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
-      },
-      "_meta": {
-        "dev.toolfactory": {
-          "requires": []
-        }
-      }
-    },
-    {
-      "name": "outlook.inbox",
-      "description": "Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "limit": {
-            "default": 10,
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 25
-          }
-        },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "conversations": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "subject": {
-                  "type": "string"
-                },
-                "sender": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "email": {
-                      "type": "string"
-                    }
-                  },
-                  "additionalProperties": false
-                },
-                "receivedAt": {
-                  "type": "string"
-                },
-                "unreadCount": {
-                  "type": "number"
-                },
-                "messageCount": {
-                  "type": "number"
-                }
-              },
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "conversations"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
@@ -1320,14 +958,10 @@
     },
     {
       "name": "record.fetch",
-      "description": "The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
+      "description": "The student's YES academic record as a parsed transcript (posted terms plus in-progress unposted courses), with a check that recomputes each term's GPA and the cumulative GPA from the posted marks and compares them with Vanderbilt's own posted figures. Trust a what-if only when verification.ok is true. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "fixturePath": {
-            "description": "Read the transcript from this JSON file instead of live YES (dev/test)",
-            "type": "string"
-          },
           "timeoutSeconds": {
             "type": "integer",
             "minimum": 1,
@@ -1396,20 +1030,100 @@
             ],
             "additionalProperties": false
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "fixture",
-              "live"
-            ]
+          "verification": {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "term": {
+                      "type": "string"
+                    },
+                    "posted": {
+                      "type": "number"
+                    },
+                    "recomputed": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "match": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "term",
+                    "posted",
+                    "recomputed",
+                    "match"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "cumulative": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "cumulativeCheck": {
+                "type": "object",
+                "properties": {
+                  "posted": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "recomputed": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "match": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "posted",
+                  "recomputed",
+                  "match"
+                ],
+                "additionalProperties": false
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ok",
+              "rows",
+              "cumulative",
+              "cumulativeCheck",
+              "note"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "transcript",
-          "source"
+          "verification"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
       },
       "_meta": {
         "dev.toolfactory": {
@@ -1421,232 +1135,88 @@
       }
     },
     {
-      "name": "scheduler.cartPlan",
-      "description": "Pure cart-only add/remove diff for a selected schedule. Unselected or unrelated courses are retained by default. Does not execute any requests or alter enrollment.",
+      "name": "request",
+      "description": "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or Outlook on the web. Cookie values never appear in the result. A non-GET request acts on the student's account: send one only for something the student asked for. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "currentIds": {
-            "type": "array",
-            "items": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Absolute https URL on a Vanderbilt or Microsoft 365 host"
+          },
+          "method": {
+            "default": "GET",
+            "type": "string",
+            "enum": [
+              "GET",
+              "HEAD",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          },
+          "headers": {
+            "description": "Extra request headers (a Cookie header is ignored)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
               "type": "string"
             }
           },
-          "chosen": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "course": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "section": {
-                  "type": "string"
-                },
-                "component": {
-                  "type": "string"
-                },
-                "termCode": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "credits": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "instructors": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "meetings": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "days": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[MTWRFSU]$"
-                        }
-                      },
-                      "start": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1439
-                      },
-                      "end": {
-                        "type": "number",
-                        "minimum": 1,
-                        "maximum": 1440
-                      },
-                      "location": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "days",
-                      "start",
-                      "end"
-                    ]
-                  }
-                },
-                "timeUnknown": {
-                  "type": "boolean"
-                },
-                "availability": {
-                  "type": "string"
-                },
-                "compatibleWith": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "course",
-                "section",
-                "component",
-                "meetings"
-              ]
-            }
+          "body": {
+            "description": "Request body, sent as given; set content-type in headers",
+            "type": "string"
           },
-          "candidates": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "course": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "section": {
-                  "type": "string"
-                },
-                "component": {
-                  "type": "string"
-                },
-                "termCode": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "credits": {
-                  "type": "number",
-                  "minimum": 0
-                },
-                "instructors": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "meetings": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "days": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[MTWRFSU]$"
-                        }
-                      },
-                      "start": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1439
-                      },
-                      "end": {
-                        "type": "number",
-                        "minimum": 1,
-                        "maximum": 1440
-                      },
-                      "location": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "days",
-                      "start",
-                      "end"
-                    ]
-                  }
-                },
-                "timeUnknown": {
-                  "type": "boolean"
-                },
-                "availability": {
-                  "type": "string"
-                },
-                "compatibleWith": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "course",
-                "section",
-                "component",
-                "meetings"
-              ]
-            }
+          "maxChars": {
+            "default": 20000,
+            "description": "Bound on the returned response text",
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 200000
           },
-          "keepExcluded": {
-            "default": true,
-            "type": "boolean"
-          },
-          "preserveSectionIds": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 570
           }
         },
         "required": [
-          "currentIds",
-          "chosen",
-          "candidates"
+          "url"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "outputSchema": {
         "type": "object",
         "properties": {
-          "add": {
-            "type": "array",
-            "items": {
+          "status": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
               "type": "string"
             }
           },
-          "remove": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "text": {
+            "type": "string"
           },
-          "unchanged": {
+          "truncated": {
+            "type": "boolean"
+          },
+          "trace": {
             "type": "array",
             "items": {
               "type": "string"
@@ -1654,20 +1224,28 @@
           }
         },
         "required": [
-          "add",
-          "remove",
-          "unchanged"
+          "status",
+          "url",
+          "contentType",
+          "headers",
+          "text",
+          "truncated",
+          "trace"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
       "annotations": {
-        "readOnlyHint": true,
-        "idempotentHint": true
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
       },
       "_meta": {
         "dev.toolfactory": {
-          "requires": []
+          "requires": [
+            "net",
+            "secret"
+          ]
         }
       }
     },
@@ -1910,7 +1488,7 @@
     },
     {
       "name": "sessions.ensure",
-      "description": "Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
+      "description": "Return the cached session for the IdP when it still works, or mint a fresh one and cache it: the OneVU passkey ceremony for vanderbilt, the Entra carry for microsoft. force=true re-mints even a working session; a failed mint keeps the current one. Other operations call this themselves, so it is only needed to warm or repair a session. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1920,6 +1498,10 @@
               "vanderbilt",
               "microsoft"
             ]
+          },
+          "force": {
+            "default": false,
+            "type": "boolean"
           },
           "timeoutSeconds": {
             "type": "integer",
@@ -2026,7 +1608,7 @@
     },
     {
       "name": "sessions.ingest",
-      "description": "Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.",
+      "description": "Ingest a harvested browser cookie export into the session store: keeps only cookies in the IdP's domain scope and reports metadata only.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2140,7 +1722,7 @@
     },
     {
       "name": "sessions.open",
-      "description": "Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
+      "description": "Injection payload for a stored session, for a local browser on the student's own machine: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Never logged or echoed anywhere else. Remote deployments do not offer it. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2178,79 +1760,6 @@
         },
         "required": [
           "payload"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false
-      },
-      "_meta": {
-        "dev.toolfactory": {
-          "requires": [
-            "secret",
-            "net"
-          ]
-        }
-      }
-    },
-    {
-      "name": "sessions.refresh",
-      "description": "Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "idp": {
-            "default": "vanderbilt",
-            "type": "string",
-            "enum": [
-              "vanderbilt",
-              "microsoft"
-            ]
-          },
-          "timeoutSeconds": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 570
-          }
-        },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "source": {
-            "type": "string",
-            "const": "minted"
-          },
-          "idp": {
-            "type": "string",
-            "enum": [
-              "vanderbilt",
-              "microsoft"
-            ]
-          },
-          "acquiredAt": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string"
-          },
-          "healthy": {
-            "type": "boolean"
-          },
-          "finalUrl": {
-            "type": "string"
-          },
-          "passkeyVerified": {
-            "type": "boolean"
-          },
-          "assertedSignCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "source",
-          "idp",
-          "acquiredAt",
-          "healthy"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false

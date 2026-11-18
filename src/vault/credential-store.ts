@@ -75,7 +75,7 @@ export const nativeSecrets: NativeSecrets = {
   },
 };
 
-export type CredentialKind = "sessions_vanderbilt" | "sessions_microsoft" | "graph";
+export type CredentialKind = "sessions_vanderbilt" | "sessions_microsoft";
 
 export function credentialSecretName(dataDir: string, kind: CredentialKind): string {
   const scope = createHash("sha256").update(resolve(dataDir)).digest("hex").slice(0, 24).toUpperCase();
@@ -111,7 +111,7 @@ export function credentialStorage(
   if (mode === "file") return undefined;
   if (mode !== "openclaw") throw new VaultNotWiredError("VUTOOLKIT_CREDENTIAL_STORE must be openclaw or file.");
   const storage = new NativeCredentialStorage(credentialSecretName(dataDir, kind), secrets);
-  const legacy = join(dataDir, kind.startsWith("sessions_") ? "sessions.vault.json" : "graph-token.json");
+  const legacy = join(dataDir, "sessions.vault.json");
   return {
     location: storage.location,
     read() {
@@ -131,25 +131,20 @@ export function credentialStorage(
 /** Call with credential writers quiesced. Originals remain until the integrator verifies cutover. */
 export async function migrateCredentialCaches(dataDir: string, secrets: NativeSecrets = nativeSecrets): Promise<{ migrated: Array<{ kind: CredentialKind; secretName: string; verified: true }>; originalsPreserved: true }> {
   const migrated: Array<{ kind: CredentialKind; secretName: string; verified: true }> = [];
-  for (const sourceKind of ["sessions", "graph"] as const) {
-    const path = join(dataDir, sourceKind === "sessions" ? "sessions.vault.json" : "graph-token.json");
-    if (!existsSync(path)) continue;
+  const path = join(dataDir, "sessions.vault.json");
+  if (existsSync(path)) {
     const raw = readFileSync(path, "utf8").trim();
     let parsed: Record<string, unknown>;
     try { parsed = JSON.parse(raw); } catch {
       throw new VaultNotWiredError("Legacy credential cache is invalid JSON; original preserved.");
     }
-    const valid = parsed && typeof parsed === "object" && (sourceKind === "sessions"
-      ? parsed.version === 1 && parsed.rows !== null && typeof parsed.rows === "object" && !Array.isArray(parsed.rows)
-      : typeof parsed.accessToken === "string" && parsed.accessToken.length > 0 &&
-        Number.isFinite(parsed.acquiredAtMs) && Number.isFinite(parsed.expiresAtMs));
+    const valid = parsed && typeof parsed === "object" &&
+      parsed.version === 1 && parsed.rows !== null && typeof parsed.rows === "object" && !Array.isArray(parsed.rows);
     if (!valid) throw new VaultNotWiredError("Legacy credential cache has an invalid shape; original preserved.");
-    const entries: Array<[CredentialKind, string]> = sourceKind === "sessions"
-      ? (["vanderbilt", "microsoft"] as const).map((idp) => [
-          `sessions_${idp}` as CredentialKind,
-          JSON.stringify((parsed.rows as Record<string, unknown>)[idp] ?? null),
-        ])
-      : [["graph", raw]];
+    const entries: Array<[CredentialKind, string]> = (["vanderbilt", "microsoft"] as const).map((idp) => [
+      `sessions_${idp}` as CredentialKind,
+      JSON.stringify((parsed.rows as Record<string, unknown>)[idp] ?? null),
+    ]);
     for (const [kind, value] of entries) {
       const storage = new NativeCredentialStorage(credentialSecretName(dataDir, kind), secrets);
       const existing = storage.read();

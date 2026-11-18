@@ -1,0 +1,10 @@
+{
+  "name": "vutoolkit-railway",
+  "private": true,
+  "description": "Deploy-only dependencies of the Railway container: Microsoft's Playwright MCP server for the signed-in browser.",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@playwright/mcp": "0.0.85"
+  }
+}

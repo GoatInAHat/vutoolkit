@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { operations } from "../ops.js";
-const names = ["sessions.open", "sessions.refresh", "sessions.ensure", "record.fetch", "brightspace.fetch", "brightspace.api", "degree.audit", "degree.graph", "degree.options", "courses.search", "courses.detail", "courses.sections", "setup.run", "setup.prepare", "setup.enroll"];
+const names = ["sessions.open", "sessions.ensure", "request", "record.fetch", "grades.whatif", "degree.audit", "degree.graph", "degree.options", "courses.search", "courses.detail", "courses.sections", "setup.run", "setup.prepare", "setup.enroll"];
 describe("ceremony caller schemas", () => {
   for (const name of names) it(`${name} preserves caller budget and bounds it`, () => {
     const op = operations.find(op => op.name === name)!;
