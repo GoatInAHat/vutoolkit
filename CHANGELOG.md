@@ -12,6 +12,7 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 - A stalled enrollment now ends with `ENROLLMENT_INCOMPLETE` inside the whole-call budget, naming the page it stopped on and the shape of any WebAuthn request OneVU made (never challenges or key material); `VUTOOLKIT_SETUP_TRACE=1` logs each change as it happens.
 - `OKTA_REJECTED` now quotes OneVU's own error text (emails redacted), and CDP failures include the protocol's error message.
 - Railway kit: `VUTOOLKIT_DEBUG_BROWSER=1` only reads the browser's target list and never attaches to a page.
+- Fix the release workflow, which still packaged and published 0.4.5 file names (so 0.5.1 never published). It is kept by hand for ClawHub's `id-token: write` permissions and had stopped following `plugin.json`; it is regenerated for this version with those permissions kept.
 
 ## 0.5.1
 
