@@ -144,7 +144,7 @@ const CLICK_FEDERATION_TRUST = `(() => {
  * counts as visible only with layout, visibility, and nonzero opacity, and the page is a password
  * prompt only when the identifier field is gone.
  */
-const PROBE_EXPR =
+export const MICROSOFT_PROBE_EXPR =
   "(() => {" +
   " const vis = (s) => { const e = document.querySelector(s); if (!e || !(e.offsetParent || e.getClientRects().length)) return false;" +
   " const st = getComputedStyle(e); return st.visibility !== 'hidden' && parseFloat(st.opacity) > 0; };" +
@@ -186,6 +186,102 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Consecutive probes on OneVU (about 8 s at the default step) that mean it wants a sign-in. */
 const ONEVU_STUCK_PROBES = 6;
 
+/** How often each step of the sign-in has been taken; every step is bounded. */
+export interface MicrosoftFlowCounts {
+  identifierFills: number;
+  kmsiClicks: number;
+  pickerClicks: number;
+  federationTrustClicks: number;
+}
+
+export const newFlowCounts = (): MicrosoftFlowCounts => ({ identifierFills: 0, kmsiClicks: 0, pickerClicks: 0, federationTrustClicks: 0 });
+
+/** Runs an expression in the page; resolves null or false when the page is mid-navigation. */
+export type PageEvaluate = (expression: string) => Promise<unknown>;
+
+const oktaSessionRequired = () =>
+  new AuthError("OKTA_SESSION_REQUIRED", "Microsoft sign-in federated to OneVU, and the browser holds no live OneVU session", { retryable: true });
+
+/**
+ * Take the one step a Microsoft sign-in page asks for, with no human input: pick this account's
+ * tile, enter its identifier (never a password), confirm Vanderbilt's federation, or accept
+ * "Stay signed in?". Throws on a password prompt, which a OneVU-federated account never sees.
+ */
+export async function actOnMicrosoftFlow(state: MicrosoftFlowState, evaluate: PageEvaluate, email: string, counts: MicrosoftFlowCounts): Promise<void> {
+  if (state.kind === "password") {
+    throw new MicrosoftNotConfiguredError(
+      "microsoft mint: Microsoft asked for a password, which a OneVU-federated account never does — the tenant's federation changed and needs the account holder's review",
+    );
+  }
+  if (state.kind === "federation-trust") {
+    if (!/^[^@\s]+@vanderbilt\.edu$/i.test(email) || counts.federationTrustClicks >= 2) {
+      throw new AuthError("MICROSOFT_FLOW_CHANGED", "Microsoft's Vanderbilt federation confirmation could not complete for the configured account", { retryable: false });
+    }
+    if ((await evaluate(CLICK_FEDERATION_TRUST).catch(() => false)) === true) counts.federationTrustClicks++;
+    return;
+  }
+  if (state.kind === "kmsi" && counts.kmsiClicks < 3) {
+    if ((await evaluate(CLICK_KMSI).catch(() => false)) === true) counts.kmsiClicks++;
+    return;
+  }
+  if (state.kind === "picker" && counts.pickerClicks < 2) {
+    if ((await evaluate(pickAccount(email)).catch(() => false)) === true) counts.pickerClicks++;
+    return;
+  }
+  if (state.kind === "identifier" && counts.identifierFills < 2) {
+    const filled = await evaluate(`(${FILL_NATIVE})('input[name=loginfmt]', ${JSON.stringify(email)})`).catch(() => false);
+    if (filled !== true) return;
+    await sleep(400);
+    if ((await evaluate(`(${CLICK_VISIBLE})('#idSIButton9')`).catch(() => false)) === true) counts.identifierFills++;
+  }
+}
+
+export interface CarryOptions {
+  evaluate: PageEvaluate;
+  /** The Vanderbilt account; must be the account this browser is meant to hold. */
+  email: string;
+  /** Defaults to 90 seconds. */
+  timeoutMs?: number;
+  stepMs?: number;
+  /** Where the sign-in counts as done; defaults to an Outlook page. */
+  isDone?: (url: string) => boolean;
+}
+
+/**
+ * Finish a Microsoft sign-in page that a site sent a signed-in browser to, the way the mint does
+ * (account tile, identifier, OneVU federation, "Stay signed in?"), and return the page it lands on.
+ * Throws OKTA_SESSION_REQUIRED when OneVU wants a sign-in, so the caller can mint OneVU first.
+ */
+export async function carryMicrosoftSignIn(opts: CarryOptions): Promise<string> {
+  const stepMs = opts.stepMs ?? 1500;
+  const timeoutMs = opts.timeoutMs ?? 90_000;
+  const isDone = opts.isDone ?? isMicrosoftSuccess;
+  const deadline = Date.now() + timeoutMs;
+  const counts = newFlowCounts();
+  let oktaSightings = 0;
+  let onevuSightings = 0;
+  let url = "";
+  while (Date.now() < deadline) {
+    const probe = (await opts.evaluate(MICROSOFT_PROBE_EXPR).catch(() => null)) as MicrosoftProbe | null;
+    if (probe && typeof probe.url === "string") {
+      url = probe.url;
+      if (isDone(url)) return url;
+      const state = classifyMicrosoftFlow(probe);
+      traceProbe(probe, state);
+      oktaSightings = state.kind === "okta" ? oktaSightings + 1 : 0;
+      onevuSightings = probe.onevu ? onevuSightings + 1 : 0;
+      if ((state.kind === "okta" && oktaSightings >= 2) || onevuSightings >= ONEVU_STUCK_PROBES) throw oktaSessionRequired();
+      await actOnMicrosoftFlow(state, opts.evaluate, opts.email, counts);
+    }
+    await sleep(stepMs);
+  }
+  let where = "an unknown page";
+  try {
+    where = new URL(url).host;
+  } catch { /* keep default */ }
+  throw new AuthError("MICROSOFT_FLOW_CHANGED", `Microsoft sign-in did not return to the site within ${Math.round(timeoutMs / 1000)}s (last host ${where})`, { retryable: true });
+}
+
 /**
  * Mint a Microsoft session from the browser: direct carry when the profile's Entra session is
  * alive, identifier-first + federation + KMSI when it is not.
@@ -199,10 +295,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
     const inbox = opts.verify ? undefined : await watchOutlookStartup(tab, opts.email);
     if (inbox) await send("Page.navigate", { url: startUrl });
     const deadline = Date.now() + timeoutMs;
-    let identifierFills = 0;
-    let kmsiClicks = 0;
-    let pickerClicks = 0;
-    let federationTrustClicks = 0;
+    const counts = newFlowCounts();
     let unverifiedLandings = 0;
     let oktaSightings = 0;
     let onevuSightings = 0;
@@ -211,7 +304,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
     while (Date.now() < deadline) {
       await sleep(first ? 4000 : stepMs);
       first = false;
-      const probe = (await evaluate(PROBE_EXPR).catch(() => null)) as MicrosoftProbe | null;
+      const probe = (await evaluate(MICROSOFT_PROBE_EXPR).catch(() => null)) as MicrosoftProbe | null;
       if (!probe) continue; // mid-navigation; probe again
       finalUrl = String(probe.url ?? "");
       const state = classifyMicrosoftFlow(probe);
@@ -238,35 +331,8 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
           finalUrl,
         };
       }
-      if (state.kind === "password") {
-        throw new MicrosoftNotConfiguredError(
-          "microsoft mint: Microsoft asked for a password, which a OneVU-federated account never does — the tenant's federation changed and needs the account holder's review",
-        );
-      }
-      if ((state.kind === "okta" && oktaSightings >= 2) || onevuSightings >= ONEVU_STUCK_PROBES) {
-        throw new AuthError("OKTA_SESSION_REQUIRED", "Microsoft sign-in federated to OneVU, and the browser holds no live OneVU session", { retryable: true });
-      }
-      if (state.kind === "federation-trust") {
-        if (!/^[^@\s]+@vanderbilt\.edu$/i.test(opts.email) || federationTrustClicks >= 2) {
-          throw new AuthError("MICROSOFT_FLOW_CHANGED", "Microsoft's Vanderbilt federation confirmation could not complete for the configured account", { retryable: false });
-        }
-        if ((await evaluate(CLICK_FEDERATION_TRUST).catch(() => false)) === true) federationTrustClicks++;
-        continue;
-      }
-      if (state.kind === "kmsi" && kmsiClicks < 3) {
-        if ((await evaluate(CLICK_KMSI).catch(() => false)) === true) kmsiClicks++;
-        continue;
-      }
-      if (state.kind === "picker" && pickerClicks < 2) {
-        if ((await evaluate(pickAccount(opts.email)).catch(() => false)) === true) pickerClicks++;
-        continue;
-      }
-      if (state.kind === "identifier" && identifierFills < 2) {
-        const filled = await evaluate(`(${FILL_NATIVE})('input[name=loginfmt]', ${JSON.stringify(opts.email)})`).catch(() => false);
-        if (filled !== true) continue;
-        await sleep(400);
-        if ((await evaluate(`(${CLICK_VISIBLE})('#idSIButton9')`).catch(() => false)) === true) identifierFills++;
-      }
+      if ((state.kind === "okta" && oktaSightings >= 2) || onevuSightings >= ONEVU_STUCK_PROBES) throw oktaSessionRequired();
+      await actOnMicrosoftFlow(state, evaluate, opts.email, counts);
     }
     let where = "an unknown page";
     try {

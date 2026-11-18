@@ -25,9 +25,13 @@ browser that the agent drives while signed in as the student. Nothing here needs
 `browser.mjs` runs Microsoft's [Playwright MCP](https://github.com/microsoft/playwright-mcp) server
 in-process (pinned in `package.json` here) and offers its tools over the same endpoint as
 `browser.navigate`, `browser.snapshot`, `browser.click` and so on. Before the first call, and at
-most every 30 minutes, it loads vutoolkit's Vanderbilt and Microsoft sessions into that browser;
-when a page lands on the OneVU or Microsoft sign-in page anyway, it re-mints that session with the
-toolkit passkey and opens the page again. It launches its own Chromium (`VUTOOLKIT_BROWSER_EXECUTABLE`,
+most every 30 minutes, it loads vutoolkit's Vanderbilt and Microsoft sessions into that browser,
+renewing only the sign-in hosts' cookies so the browser's own app sign-ins and local storage (where
+Outlook keeps its tokens) survive. When a page lands on a sign-in page, at once or a few seconds
+later by script as Outlook does, `browser.navigate` finishes the sign-in in the background and
+opens the page again: Microsoft's own sign-in page is completed in the browser (account tile,
+identifier, OneVU federation, "Stay signed in?"; never a password), and OneVU is re-minted with the
+toolkit passkey when it asks for a sign-in (`src/sso/browser-session.ts`). It launches its own Chromium (`VUTOOLKIT_BROWSER_EXECUTABLE`,
 set by `start.sh`), never the ceremony browser, because Chromium switches off a tab's passkey helper
 when another DevTools client detaches from it.
 

@@ -121,6 +121,32 @@ describe("ensureSession", () => {
     expect((await store.get("vanderbilt"))?.cookieHeader).toBe("idx=v");
   });
 
+  it("judges an older Microsoft session by a live probe instead of re-minting it blindly", async () => {
+    const store = freshStore();
+    await store.put({ idp: "microsoft", acquiredAt: HOUR_AGO, expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "MSAL=x", cookies: [{ name: "MSAL", value: "x", domain: "login.microsoftonline.com" }] });
+    const probed: string[] = [];
+    const result = await ensureSession("microsoft", store, {
+      ...DEPS,
+      microsoftCeremony: async () => { throw new Error("must not mint a live Microsoft session"); },
+      probe: async (idp) => { probed.push(idp); return true; },
+    });
+    expect(result).toMatchObject({ source: "cache", healthy: true });
+    expect(probed).toEqual(["microsoft"]);
+  });
+
+  it("stops reporting a dead session as healthy even when the re-mint fails", async () => {
+    const store = freshStore();
+    await store.put({ idp: "microsoft", acquiredAt: HOUR_AGO, expiresAt: IN_A_YEAR, healthy: true, cookieHeader: "MSAL=x", cookies: [{ name: "MSAL", value: "x", domain: "login.microsoftonline.com" }] });
+    await expect(ensureSession("microsoft", store, {
+      ...DEPS,
+      probe: async () => false,
+      microsoftCeremony: async () => { throw new AuthError("MICROSOFT_FLOW_CHANGED", "synthetic", { retryable: false }); },
+    })).rejects.toThrow("synthetic");
+    const row = await store.get("microsoft");
+    expect(row?.healthy).toBe(false);
+    expect(store.cookies("microsoft")).toHaveLength(1);
+  });
+
   it("mints when no session exists, caches it, and the next ensure is a cache hit", async () => {
     const store = freshStore();
     const first = await ensureSession("vanderbilt", store, DEPS);

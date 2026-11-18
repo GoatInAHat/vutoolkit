@@ -16,11 +16,14 @@ const { context } = await import(new URL("dist/toolfactory/config.js", root).hre
 if (process.env.VUTOOLKIT_BROWSER !== "0") {
   try {
     const { browserOperations } = await import("./browser.mjs");
-    const { ensureSession } = await import(new URL("dist/sso/ensure.js", root).href);
+    const { configuredEmail, ensureSession } = await import(new URL("dist/sso/ensure.js", root).href);
+    const browserSession = await import(new URL("dist/sso/browser-session.js", root).href);
     const { vaultStore } = await import(new URL("dist/http/with-session.js", root).href);
     const { z } = createRequire(new URL("package.json", root))("zod");
     const ctx = context();
-    const browser = await browserOperations({ z, ensureSession, store: () => vaultStore(ctx), dataDir: ctx.dataDir, log });
+    const browser = await browserOperations({
+      z, ensureSession, browserSession, email: () => configuredEmail(), store: () => vaultStore(ctx), dataDir: ctx.dataDir, log,
+    });
     operations.push(...browser);
     log(`browser: ${browser.length} tools ready`);
   } catch (error) {
