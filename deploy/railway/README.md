@@ -37,6 +37,10 @@ uploads), and test-harness controls (request mocking, offline mode, media emulat
 authorization header lines are redacted from every result. Set `VUTOOLKIT_BROWSER=0` to turn the
 browser off.
 
+`VUTOOLKIT_BROWSER_PROBE=https://brightspace.vanderbilt.edu/d2l/home` checks a deploy: once the
+server starts it opens that page in the browser and logs where it landed (origin, path and title
+only) and whether that is a sign-in page.
+
 ## Service settings
 
 - Build: Railpack, build command `npm run build && npm ci --prefix deploy/railway`.
