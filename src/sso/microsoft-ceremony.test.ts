@@ -100,4 +100,11 @@ describe("Microsoft federation confirmation ceremony", () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(verify).toHaveBeenCalled();
   });
+
+  it("asks for a OneVU sign-in when the federation hop stays on OneVU in a widget state it does not name", async () => {
+    setup({ url: "https://onevu.vanderbilt.edu/app/office365/synthetic/sso/wsfed/passive", heading: "" });
+    const pending = expect(microsoftSessionFromSso({ ...opts, verify: async () => true })).rejects.toMatchObject({ code: "OKTA_SESSION_REQUIRED" });
+    await vi.runAllTimersAsync();
+    await pending;
+  });
 });
