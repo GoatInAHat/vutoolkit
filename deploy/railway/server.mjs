@@ -119,5 +119,27 @@ function browserLog() {
   }, 3000).unref();
 }
 
+/**
+ * VUTOOLKIT_BROWSER_PROBE=<url> opens that page in the signed-in browser once the server starts and
+ * logs only where it landed (origin, path, title) and whether that is a sign-in page: a deploy check
+ * that the sessions load and re-mint, without an MCP client.
+ */
+async function browserProbe() {
+  const url = process.env.VUTOOLKIT_BROWSER_PROBE;
+  const navigate = op("browser.navigate");
+  if (!url || !navigate) return;
+  try {
+    const { text } = await navigate.handler({ url }, context());
+    const landed = /Page URL: (\S+)/.exec(text)?.[1] ?? "";
+    const title = (/Page Title: (.*)/.exec(text)?.[1] ?? "").trim().slice(0, 80);
+    const where = (() => { try { const u = new URL(landed); return { host: u.hostname, path: u.origin + u.pathname }; } catch { return { host: "", path: "?" }; } })();
+    const signIn = ["onevu.vanderbilt.edu", "login.microsoftonline.com", "login.microsoft.com"].includes(where.host);
+    log(`browser probe: ${signIn ? "NOT signed in" : "signed in"}: ${where.path} [${title}]`);
+  } catch (error) {
+    log(`browser probe: failed: ${String(error?.message ?? error).split("\n")[0].slice(0, 200)}`);
+  }
+}
+
 browserLog();
+browserProbe();
 autoSetup().catch((error) => log(`auto-setup: crashed: ${error?.message ?? error}`));
