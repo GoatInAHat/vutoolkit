@@ -10,6 +10,8 @@ const EMAIL = "synthetic@vanderbilt.edu";
 const OUTLOOK = "https://outlook.cloud.microsoft/mail/";
 const AUTHORIZE = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=x&prompt=select_account";
 const page = (url: string, title = "Outlook") => ({ text: `### Page\n- Page URL: ${url}\n- Page Title: ${title}\n` });
+/** The fake Outlook titles its inbox as signed in; anything else is the loading shell. */
+const titleOf = (url: string) => (url.startsWith(OUTLOOK) && url.endsWith("0/") ? "Mail - Synthetic - Outlook" : "Outlook");
 
 /** A fake browser: `pages` is what each navigation shows over time (first entry at once). */
 function fakeBrowser(script: { navigations: string[][]; signInStates?: Array<Record<string, unknown>> }) {
@@ -25,7 +27,7 @@ function fakeBrowser(script: { navigations: string[][]; signInStates?: Array<Rec
       current = script.navigations[nav][0];
       return page(current);
     }),
-    snapshot: vi.fn(async () => page(current)),
+    snapshot: vi.fn(async () => page(current, titleOf(current))),
     evaluate: async (expr: string) => {
       if (expr === MICROSOFT_PROBE_EXPR) {
         // The page stays in its last scripted state once the script runs out.
@@ -36,7 +38,7 @@ function fakeBrowser(script: { navigations: string[][]; signInStates?: Array<Rec
       if (expr.includes("location.href") && expr.includes("document.title")) {
         const steps = script.navigations[nav];
         current = steps[Math.min(++tick, steps.length - 1)];
-        return { url: current, title: current.startsWith(OUTLOOK) && current.endsWith("0/") ? "Mail - Synthetic - Outlook" : "Outlook" };
+        return { url: current, title: titleOf(current) };
       }
       return true;
     },
@@ -97,6 +99,14 @@ describe("navigateSignedIn", () => {
     expect(result.text).toContain(`${OUTLOOK}0/`);
     expect(reloads).toEqual([]);
     expect(driver.navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the page as it settled, not the shell it first loaded, even when the address did not change", async () => {
+    const inbox = `${OUTLOOK}0/`;
+    const { driver } = fakeBrowser({ navigations: [[inbox, inbox]] });
+    const result = await navigateSignedIn(driver, inbox, { stepMs: 1 });
+    expect(driver.snapshot).toHaveBeenCalledTimes(1);
+    expect(result.text).toContain("Mail - Synthetic - Outlook");
   });
 
   it("notices Outlook's delayed redirect to sign-in, finishes it in the background and reopens the page", async () => {
