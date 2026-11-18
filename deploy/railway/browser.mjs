@@ -118,7 +118,9 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
   };
   /** The page's evaluation result, or null when it could not run (mid-navigation, no page). */
   const evaluate = async (expression) => {
-    const { text: out, isError } = await call("browser_evaluate", { function: expression });
+    // The tool's contract is a function; Playwright MCP 0.0.85 also evaluates a bare expression,
+    // but wrapping keeps to the documented form.
+    const { text: out, isError } = await call("browser_evaluate", { function: `() => (${expression})` });
     const json = /### Result\n([\s\S]*?)(?:\n### |$)/.exec(out)?.[1];
     if (isError || json === undefined) return null;
     try { return JSON.parse(json); } catch { return null; }
