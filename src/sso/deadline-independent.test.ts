@@ -24,7 +24,7 @@ it('does not arm a credential after caller abort during real ceremony setup', as
   const dir = mkdtempSync(join(tmpdir(), 'vutoolkit-independent-')); dirs.push(dir);
   const store = new FileSessionStore(join(dir, 'sessions.vault.json'));
   let raw = JSON.stringify({credentialId:'YWJj',privateKey:'synthetic',userHandle:'dXNlcg',rpId:'vanderbilt.edu',signCount:4});
-  const op = withCallerBudget({name:'sessions.refresh', description:'independent boundary probe', input:z.object({}), handler: async () => ensureSession('vanderbilt', store, {
+  const op = withCallerBudget({name:'sessions.ensure', description:'independent boundary probe', input:z.object({}), handler: async () => ensureSession('vanderbilt', store, {
     forceRefresh:true, env:{VUTOOLKIT_CDP_URL:'http://127.0.0.1:18800'}, ensureBrowser:async()=>{},
     secretsRead:name=>name==='VANDERBILT_EMAIL'?'synthetic@example.invalid':raw,
     secretsWrite:async(_name,value)=>{raw=value;}, retryDelayMs:0,

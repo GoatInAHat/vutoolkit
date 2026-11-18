@@ -50,7 +50,7 @@ Auth information for agentic use already exists (the old Railway OpenClaw deploy
 
 Build order:
 1. Working automated SSO login
-2. SSO login → Microsoft (Graph) login
+2. SSO login → Microsoft 365 login
 3. Both tools
 4. Setup flow: from user providing everything except the passkey to issuing the passkey and saving it securely — as user-friendly, automatic, and reliable as possible
 
@@ -62,7 +62,7 @@ Build using toolfactory (github.com/GoatInAHat/toolfactory); improve toolfactory
 
 Added 2026-09-27; the original brief above is unchanged. See [ACCEPTANCE.md](ACCEPTANCE.md) for the feature-by-feature evidence and limits.
 
-- **Implemented and read-only live-verified:** Vanderbilt/Microsoft session health and export, Graph account identity, YES academic record, official term/cumulative GPA verification and what-if calculation, official audit/planner data, requirement alternatives, catalog/section data, a live OR prerequisite expression, scheduling over live sections, and public professor lookup. The current live suite passes **13 tests** using the configured account's host vault.
+- **Implemented and read-only live-verified:** Vanderbilt/Microsoft session health and export, Microsoft account identity, YES academic record, official term/cumulative GPA verification and what-if calculation, official audit/planner data, requirement alternatives, catalog/section data, a live OR prerequisite expression, scheduling over live sections, and public professor lookup. The current live suite passes **13 tests** using the configured account's host vault.
 - **Implemented with algorithm/fixture verification:** deterministic AND/OR prerequisite ranking, including a degree-wide ranking across caller-supplied official requirement alternatives, shared-credit accounting, completed/planned work, weighted preferences, and cycle/unknown/truncation handling. The ranking is exhaustive only for the supplied model when every branch has known metadata and search is untruncated; it never certifies official degree completion. Schedule preferences and cart diffs, the D3 interface, YES extension controls, and passkey enrollment state handling are also covered. Source-unit acceptance passes **178 tests**; browser execution and surface checks are recorded separately.
 - **Not yet live-verified:** issuance and subsequent use of a newly enrolled toolkit passkey; actual YES cart mutations; every browser and every new account. These must not be described as completed live acceptance.
 - **Bounded versus the broad planning goal:** the graph preserves official audit requirements and lazily fetches their alternatives; `planner.graph` can exhaustively rank a supplied AND/OR requirement model with known prerequisite metadata. It does not establish that a caller supplied every official constraint, resolve arbitrary prerequisite prose, or automatically derive preference weights from the student's email/research history. Unknowns and search truncation remain explicit.

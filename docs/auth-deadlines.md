@@ -8,7 +8,7 @@ by the requested time, not each retry separately. Omitting it preserves existing
 behavior, including setup's existing defaults.
 
 The wrapper uses AsyncLocalStorage to carry cancellation into internal ensures,
-including YES, Graph, Brightspace and setup. The native adapter is intentionally
+including YES, Microsoft 365, Brightspace and setup. The native adapter is intentionally
 adopted from Tool Factory 0.4.6: that generator did not forward the tool execution
 signal. It now derives all native schemas and descriptions from the core operations,
 validates arguments and forwards `execution.signal`. New ceremony operations must

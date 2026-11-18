@@ -11,13 +11,10 @@
  */
 import type { CookieRecord } from "../vault/file-store.js";
 import type { Idp } from "../vault/index.js";
-import { CookieJar, jarFetch } from "../yes/jar.js";
+import { CookieJar, sessionFetch } from "../http/session-fetch.js";
 import { discoverRecordFragmentUrl } from "../yes/aai-record.js";
 
-/** The aai shell: a live Vanderbilt session lands here with its academic-record hx-get URL. */
-const AAI_SHELL_URL = "https://aai.app.vanderbilt.edu/aai";
-const BROWSER_UA =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+import { AAI_SHELL_URL } from "../yes/client.js";
 
 export type LivenessProbe = (idp: Idp, cookies: CookieRecord[], fetchImpl?: typeof fetch) => Promise<boolean>;
 /**
@@ -28,13 +25,9 @@ export type LivenessProbe = (idp: Idp, cookies: CookieRecord[], fetchImpl?: type
 export async function probeVanderbilt(cookies: CookieRecord[], fetchImpl?: typeof fetch): Promise<boolean> {
   if (cookies.length === 0) return false;
   try {
-    const res = await jarFetch(AAI_SHELL_URL, {
-      jar: new CookieJar(cookies),
-      headers: { "user-agent": BROWSER_UA },
-      fetchImpl,
-    });
+    const res = await sessionFetch({ url: AAI_SHELL_URL }, { jar: new CookieJar(cookies), fetchImpl });
     if (res.status !== 200) return false;
-    if (new URL(res.finalUrl).hostname !== "aai.app.vanderbilt.edu") return false;
+    if (new URL(res.url).hostname !== "aai.app.vanderbilt.edu") return false;
     return discoverRecordFragmentUrl(res.text) !== null;
   } catch {
     return false;

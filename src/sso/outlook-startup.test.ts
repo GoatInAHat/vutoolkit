@@ -1,35 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CdpTab } from "../sso/cdp-driver.js";
-import { parseOutlookStartup, watchOutlookInbox } from "./inbox.js";
+import type { CdpTab } from "./cdp-driver.js";
+import { parseOutlookStartup, watchOutlookStartup } from "./outlook-startup.js";
 
 const email = "student@vanderbilt.edu";
 const fixture = {
   owaUserConfig: { SessionSettings: { UserEmailAddress: email.toUpperCase() } },
-  findConversation: { Body: { ResponseCode: "NoError", Conversations: [{
-    ConversationTopic: "Synthetic subject",
-    LastSender: { Mailbox: { Name: "Example Sender", EmailAddress: "sender@example.test" } },
-    LastDeliveryTime: "2026-01-01T00:00:00Z",
-    MessageCount: 1,
-    UnreadCount: 0,
-    Preview: "Private body preview",
-  }] } },
 };
 
-describe("Outlook inbox startup", () => {
-  it("only exposes inbox summary fields for the configured mailbox", () => {
-    expect(parseOutlookStartup(fixture, email)).toEqual({ inbox: [{
-      subject: "Synthetic subject",
-      sender: { name: "Example Sender", email: "sender@example.test" },
-      receivedAt: "2026-01-01T00:00:00Z",
-      messageCount: 1,
-      unreadCount: 0,
-    }] });
-  });
-
-  it("distinguishes an empty inbox and a signed-out shell", () => {
-    expect(parseOutlookStartup({ ...fixture, findConversation: {
-      Body: { ResponseCode: "NoError", Conversations: [] },
-    } }, email)).toEqual({ inbox: [] });
+describe("Outlook startup identity", () => {
+  it("accepts the configured mailbox's startup data and ignores anything else", () => {
+    expect(parseOutlookStartup(fixture, email)).toBe(true);
     expect(parseOutlookStartup({}, email)).toBeUndefined();
   });
 
@@ -40,7 +20,7 @@ describe("Outlook inbox startup", () => {
   it("reads only a completed Outlook startup response, including its JavaScript MIME type", async () => {
     let emit!: NonNullable<Parameters<NonNullable<CdpTab["onEvent"]>>[0]>;
     const send = vi.fn(async () => ({ body: JSON.stringify(fixture), base64Encoded: false }));
-    const read = await watchOutlookInbox({
+    const read = await watchOutlookStartup({
       tabId: "synthetic",
       evaluate: async () => undefined,
       send: send as CdpTab["send"],
@@ -58,6 +38,6 @@ describe("Outlook inbox startup", () => {
     emit("Network.loadingFinished", { requestId: "mail" });
     await Promise.resolve();
     expect(send).toHaveBeenCalledWith("Network.getResponseBody", { requestId: "mail" });
-    expect(read()?.inbox?.[0]?.subject).toBe("Synthetic subject");
+    expect(read()).toBe(true);
   });
 });

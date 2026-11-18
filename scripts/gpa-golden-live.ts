@@ -3,9 +3,9 @@
  * (which re-execs this module under tsx). Proves, against the real account and the account
  * holder's own vault:
  *
- * 1. record.fetch's chain — ensureSession("vanderbilt") -> YesClient.academicRecord() — returns a
+ * 1. record.fetch's chain — ensureSession("vanderbilt") -> academicRecord() — returns a
  *    live Transcript carrying Vanderbilt's own posted term and cumulative GPA anchors.
- * 2. gpa.verify's engine (verifyTranscript) recomputes every posted term GPA and the posted
+ * 2. record.fetch's verification (verifyTranscript) recomputes every posted term GPA and the posted
  *    cumulative GPA, matching Vanderbilt's own numbers exactly.
  * 3. grades.whatif's engine (whatIf) projects a semester/cumulative GPA for every unposted,
  *    in-progress course assigned a hypothetical "A", without mutating the source transcript.
@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureSession } from "../src/sso/ensure.js";
 import { sessionStore } from "../src/vault/file-store.js";
-import { YesClient } from "../src/yes/client.js";
+import { academicRecord } from "../src/yes/client.js";
 import { verifyTranscript, whatIf, type Transcript } from "../src/gpa/engine.js";
 
 const env: NodeJS.ProcessEnv = { ...process.env };
@@ -94,14 +94,14 @@ try {
   if (seeded) {
     // 1 — record.fetch's own chain: ensure the cached session, then pull the live transcript.
     await ensureSession("vanderbilt", store, vuDeps);
-    const transcript: Transcript = await new YesClient({ cookies: store.cookies("vanderbilt") }).academicRecord();
+    const transcript: Transcript = await academicRecord(store.cookies("vanderbilt"));
     const hasAnchors = transcript.terms.length > 0 &&
       transcript.terms.some((term) => term.postedGpa !== undefined) &&
       typeof transcript.postedCumulativeGpa === "number";
     if (!hasAnchors) {
       fail("RECORD_MISSING_POSTED_ANCHORS");
     } else {
-      // 2 — gpa.verify's engine must reproduce every posted term and cumulative GPA.
+      // 2 — record.fetch's verification must reproduce every posted term and cumulative GPA.
       const verifyResult = verifyTranscript(transcript);
       verify = {
         rowCount: verifyResult.rows.length,

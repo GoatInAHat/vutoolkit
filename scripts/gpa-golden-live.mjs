@@ -1,5 +1,5 @@
 /**
- * Entry point for the GPA golden-test live harness (record.fetch -> gpa.verify -> grades.whatif).
+ * Entry point for the GPA golden-test live harness (record.fetch with its verification -> grades.whatif).
  *
  * Node 22 cannot import `.ts` without a loader (`ERR_UNKNOWN_FILE_EXTENSION`), and tsx refuses
  * `module.register()` ("tsx must be loaded with --import instead of --loader"). So this shim

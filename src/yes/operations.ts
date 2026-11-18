@@ -1,26 +1,14 @@
 import { searchProfessors } from "./professors.js";
 import { z } from "zod";
 import { operation, type Context } from "../toolfactory/types.js";
-import { sessionStore } from "../vault/file-store.js";
-import { credentialEnv } from "../vault/credential-store.js";
-import { ensureSession } from "../sso/ensure.js";
+import { withSession } from "../http/with-session.js";
 import { YesPlanningClient } from "./planning-client.js";
 import { officialAuditGraph } from "./audit-graph.js";
 import { buildDegreeGraph, parsePrerequisites } from "./planner.js";
-import { solveSchedules, cartDifference } from "./scheduler.js";
+import { solveSchedules } from "./scheduler.js";
 import { plannerInputSchema, scheduleInputSchema, sectionSchema } from "./schemas.js";
-async function withClient<T>(ctx: Context, read: (client: YesPlanningClient) => Promise<T>): Promise<T> {
-  const store = sessionStore(ctx.dataDir, credentialEnv(ctx.config));
-  await ensureSession("vanderbilt", store);
-  const attempt = () => read(new YesPlanningClient({ cookies: store.cookies("vanderbilt") }));
-  try { return await attempt(); }
-  catch (error) {
-    if (!(error instanceof Error) || !error.message.includes("session requires refresh")) throw error;
-    await store.forget("vanderbilt");
-    await ensureSession("vanderbilt", store);
-    return attempt();
-  }
-}
+const withClient = <T>(ctx: Context, read: (client: YesPlanningClient) => Promise<T>): Promise<T> =>
+  withSession(ctx, ["vanderbilt"], (cookies) => read(new YesPlanningClient({ cookies })));
 const jsonObject = z.record(z.string(), z.unknown());
 const readonly = { readOnlyHint: true, idempotentHint: true };
 export const yesOperations = [
@@ -32,6 +20,5 @@ export const yesOperations = [
   operation({ name: "courses.detail", description: "Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner.", input: z.object({ id: z.string().regex(/^\d+$/), offerNumber: z.number().int().positive().default(1) }), output: z.object({ id: z.string(), offerNumber: z.number(), text: z.string(), description: z.string().nullable(), prerequisiteText: z.string().nullable(), prerequisites: z.unknown(), source: z.string() }), requires: ["net", "secret"], annotations: readonly, handler: async ({ id, offerNumber }, ctx) => { const result = await withClient(ctx, (c) => c.courseDetail(id, offerNumber)); return { ...result, prerequisites: result.prerequisiteText === null ? { kind: "unknown", text: "No prerequisite field found; verify the official catalog" } : parsePrerequisites(result.prerequisiteText) }; } }),
   operation({ name: "courses.sections", description: "Read live YES section alternatives with campus-local meeting times, professor, room, availability and lecture/lab component. Missing or TBA times are explicit. No cart/enrollment changes.", input: z.object({ keywords: z.string().min(3), termCode: z.string().regex(/^\d+$/).optional() }), output: z.object({ sections: z.array(sectionSchema), source: z.literal("live") }), requires: ["net", "secret"], annotations: readonly, handler: async ({ keywords, termCode }, ctx) => withClient(ctx, (c) => c.searchSections(keywords, termCode)) }),
   operation({ name: "scheduler.solve", description: "Enumerate conflict-free section combinations; include labs, multiple meetings, course exclusions and preferred break times. Deterministic preference ranking and explicit truncation/TBA uncertainty. Returns choices, never enrollment actions.", input: scheduleInputSchema, output: z.object({ schedules: z.array(jsonObject), found: z.number(), searched: z.number(), truncated: z.boolean(), searchComplete: z.boolean(), incompatibleGroups: z.array(z.array(z.string())), excludedCourses: z.array(z.string()), excludedSectionIds: z.array(z.string()), warnings: z.array(z.string()) }), annotations: readonly, handler: async (args) => solveSchedules(args) }),
-  operation({ name: "scheduler.cartPlan", description: "Pure cart-only add/remove diff for a selected schedule. Unselected or unrelated courses are retained by default. Does not execute any requests or alter enrollment.", input: z.object({ currentIds: z.array(z.string()), chosen: z.array(sectionSchema), candidates: z.array(sectionSchema), keepExcluded: z.boolean().default(true), preserveSectionIds: z.array(z.string()).default([]) }), output: z.object({ add: z.array(z.string()), remove: z.array(z.string()), unchanged: z.array(z.string()) }), annotations: readonly, handler: async ({ currentIds, chosen, candidates, keepExcluded, preserveSectionIds }) => cartDifference(currentIds, chosen, candidates, keepExcluded, preserveSectionIds) }),
   operation({ name: "planner.graph", description: "Deterministically rank paths for supplied official requirement alternatives and/or course goals. Shared prerequisites count once; completed and planned work is factored in. Unknown prose, missing metadata, cycles and truncation remain explicit. A model-optimal result is exhaustive only for supplied inputs; degree.audit remains the official authority.", input: plannerInputSchema, output: z.object({ nodes: z.array(z.unknown()), edges: z.array(z.unknown()), alternatives: z.array(jsonObject), truncated: z.boolean(), warnings: z.array(z.string()), modelOptimal: z.boolean(), rankingScope: z.string(), ranking: z.string() }), annotations: readonly, handler: async (args) => buildDegreeGraph(args) }),
 ];

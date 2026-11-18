@@ -44,8 +44,8 @@ These checks allow healthy session reuse. This run does **not** independently pr
 
 | Original requirement | Implementation | Verification and remaining boundary |
 | --- | --- | --- |
-| OneVU passkey authentication and cached SSO | `sessions.ensure`, `sessions.refresh`; host-vault credential resolution and dedicated CDP tabs | Auth orchestration unit-tested; current authenticated health verified. A destructive cache reset is not part of the release suite. |
-| Microsoft session and Outlook inbox | Microsoft session chain; `outlook.inbox` | Configured identity and read-only inbox access verified live with a passkey from an empty browser profile. |
+| OneVU passkey authentication and cached SSO | `sessions.ensure`; host-vault credential resolution and dedicated CDP tabs | Auth orchestration unit-tested; current authenticated health verified. A destructive cache reset is not part of the release suite. |
+| Microsoft session | Microsoft session chain (Outlook startup identity check) | Configured mailbox identity verified live with a passkey from an empty browser profile. |
 | Reusable sessions for other authorized clients | Ingest, export, refresh, forget, metadata listing; Cookie/CDP/Playwright formats | Both identity-provider export shapes verified live; storage and scope filtering unit-tested. Individual third-party services still have their own browser/API requirements. |
 | Academic record including unposted courses | Live YES record adapter | Live transcript and posted totals verified; projection uses its in-progress courses. No private student record is included in this repository. |
 | Term and cumulative what-if GPA | Pure calculation engine; official-total verification | All posted term and cumulative comparisons pass on the configured live account. Synthetic tests cover grading and projection cases. |

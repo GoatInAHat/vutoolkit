@@ -5,8 +5,8 @@ import type { Operation, Context } from "../toolfactory/types.js";
 import { withDeadline } from "./errors.js";
 
 export const ceremonyTools = new Set([
-  "sessions.open", "sessions.refresh", "sessions.ensure", "graph.call", "record.fetch",
-  "brightspace.fetch", "brightspace.api", "degree.audit", "degree.graph", "degree.options",
+  "sessions.open", "sessions.ensure", "request", "record.fetch", "grades.whatif",
+  "degree.audit", "degree.graph", "degree.options",
   "courses.search", "courses.detail", "courses.sections", "setup.run", "setup.prepare", "setup.enroll",
 ]);
 const calls = new AsyncLocalStorage<{ signal?: AbortSignal }>();

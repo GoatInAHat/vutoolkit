@@ -16,7 +16,7 @@ const live = CREDENTIALS.every((name) => process.env[name]);
 
 describe.skipIf(!live)("vutoolkit against the real service", () => {
   const ctx = context();
-  let record: Promise<Transcript> | undefined;
+  let record: Promise<{ transcript: Transcript; verification: { ok: boolean; rows: { match: boolean }[]; cumulativeCheck: { match: boolean | null } } }> | undefined;
   const vitestMarker = process.env.VITEST;
   beforeAll(() => {
     // OpenClaw suppresses its CLI main when VITEST is inherited. These are deliberately
@@ -42,10 +42,8 @@ describe.skipIf(!live)("vutoolkit against the real service", () => {
     }
   }
 
-  const transcript = (): Promise<Transcript> => record ??= call("record.fetch").then((result) => {
-    expect(result.source === "live", "record must come from YES, not a fixture").toBe(true);
-    return result.transcript;
-  });
+  const recordResult = () => record ??= call("record.fetch");
+  const transcript = (): Promise<Transcript> => recordResult().then((result) => result.transcript);
 
   for (const idp of ["vanderbilt", "microsoft"]) {
     it(`validates the real ${idp} session`, async () => {
@@ -55,10 +53,10 @@ describe.skipIf(!live)("vutoolkit against the real service", () => {
     }, 420_000);
   }
 
-  it("reads the configured Outlook inbox", async () => {
-    const result = await call("outlook.inbox", { limit: 1 });
-    expect(Array.isArray(result.conversations)).toBe(true);
-    expect(result.conversations.length).toBeLessThanOrEqual(1);
+  it("reaches Brightspace's API as the signed-in student", async () => {
+    const result = await call("request", { url: "https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami" });
+    expect(result.status === 200).toBe(true);
+    expect(typeof JSON.parse(result.text).Identifier === "string").toBe(true);
   }, 420_000);
 
   it("fetches the real academic record with independent posted totals", async () => {
@@ -70,7 +68,7 @@ describe.skipIf(!live)("vutoolkit against the real service", () => {
   }, 420_000);
 
   it("reproduces every posted term GPA and the posted cumulative GPA", async () => {
-    const result = await call("gpa.verify", { transcript: await transcript() });
+    const result = (await recordResult()).verification;
     expect(result.rows.length > 0).toBe(true);
     expect(result.rows.every((row: { match: boolean }) => row.match)).toBe(true);
     expect(result.cumulativeCheck.match === true).toBe(true);

@@ -54,7 +54,7 @@
       "state": "generated"
     },
     ".env.example": {
-      "sha256": "ed85f3a015eb47b2cec43d6788a2db1fc609dfa1f054112bc8cae144649de424",
+      "sha256": "c9a879c0a79c832dc79e14f41dface0fccbeec7239ea8e01111d239ef4471705",
       "state": "generated"
     },
     ".gitattributes": {
@@ -74,7 +74,7 @@
       "state": "generated"
     },
     ".github/workflows/release.yml": {
-      "sha256": "2a6ec6ba6bf2c9fed65ae3ac655d9d65a0124c9b47e67b019eec762eeb93ef87",
+      "sha256": "d2e0281baa6a8e2bc5b9eff4c374cd5b0b80e9046a3402dff2afffd056a9657e",
       "state": "generated"
     },
     ".gitignore": {
@@ -102,11 +102,11 @@
       "state": "generated"
     },
     "COVERAGE.md": {
-      "sha256": "16e4c30d2f93a048ec5d4f53acdaac0a686811d2a02706cc9f8e6a0049adc614",
+      "sha256": "88d10b8bc610677391014ad69e387d6d95fe525a8434e5e4e11c6d7e711d52e5",
       "state": "generated"
     },
     "dev.toolfactory/coverage.json": {
-      "sha256": "6b1b1aa9f6ed8257984d431d413f0c3ae85a0adea7fff7356dfa8f54032d2376",
+      "sha256": "18e68b1dda9a4956d2910ea9c969357930cc254d6be17f18ac80a59728337981",
       "state": "generated"
     },
     "dev.toolfactory/inspector.json": {
@@ -156,7 +156,7 @@
       "state": "generated"
     },
     "hosts/browser/package.json": {
-      "sha256": "9f27117d6539efc0244be88fddce52ff90b65bec48f5b6fc3f1c3048c6967d5a",
+      "sha256": "f60f75b8a4e9522c4bfd544ac958cdc193f56f77d305980d8043334d3d55757d",
       "state": "generated",
       "keys": [
         "name",
@@ -193,11 +193,11 @@
       "state": "generated"
     },
     "hosts/browser/TARGETS.md": {
-      "sha256": "182733c52071f72a9edee4530880b2e3e5573b912f284496b76f8cbad5bdbc2f",
+      "sha256": "786c8d09013c54cf077c27fc1eb4259b0553cdad0fa620dafd0fa7cf869af8bd",
       "state": "generated"
     },
     "hosts/browser/tests/background.test.ts": {
-      "sha256": "3446f0841ce4115b1b87114a2f070c0e3ed1e7cd7e0ae36486a09b4e66778a61",
+      "sha256": "01475e61d73547ffcedd2bba67c476251687fd492f6d97dda5e053ce60f7b1f3",
       "state": "generated"
     },
     "hosts/browser/tests/smoke.mjs": {
@@ -243,7 +243,7 @@
       "state": "generated"
     },
     "hosts/openclaw/openclaw.plugin.json": {
-      "sha256": "72b5fd9fdf39aab4e1375637379aea990759723ca80e98228c23db9d64571ebf",
+      "sha256": "a4dceb0e5713844c1b7a5c5a30a23876f12e9a7964e9e55ba552c31bb7a4b80d",
       "state": "generated",
       "keys": [
         "id",
@@ -262,7 +262,7 @@
       ]
     },
     "hosts/openclaw/package.json": {
-      "sha256": "8a888e0862eabc60ba626828e3c1693bb46383afbe1663395a9e14d93c83a8d3",
+      "sha256": "372e8e49e21d56aed913551635d28f9f0bb66781758222f34b91cf1a5afca010",
       "state": "generated",
       "keys": [
         "name",
@@ -294,15 +294,15 @@
       ]
     },
     "hosts/openclaw/README.md": {
-      "sha256": "a08a9cac5e3dd4b621f9c01245be1f05cfd498697a57c6a728818855c4ca8de5",
+      "sha256": "bcadbfdaf95422fc4723d3af89b36fdbb1296bc6aafdc26aced58d41d19d7bdb",
       "state": "generated"
     },
     "hosts/openclaw/skills/vutoolkit/SKILL.md": {
-      "sha256": "2b9300182a1d62318e10ded904a59fd0b753fea4ac38b3381f6ce631cb48ba67",
+      "sha256": "7c1a99d3e46963870fd60edf3a7b5a4d91c2a14bd1469c6a902ebe13733ceaf3",
       "state": "generated"
     },
     "hosts/openclaw/src/index.test.ts": {
-      "sha256": "3427c5bfb9ff54e5a64d9d0230ef9997e5667a322ed5c7202d8a45632d7c12e9",
+      "sha256": "1561654267fa7303a966332ec92df6891a4b0732216132f57260bd9e9f3bfd6f",
       "state": "generated"
     },
     "hosts/openclaw/src/index.ts": {
@@ -318,7 +318,7 @@
       "state": "generated"
     },
     "package.json": {
-      "sha256": "a943ecee1d5d85c87290dfbf6c5af87e1a530641c05a90aa48c9d0b8dc6c129d",
+      "sha256": "cce4227289c048a1a2c3854ca697a4449ee51412d6d3299615e12df1fcd5a906",
       "state": "generated",
       "keys": [
         "name",
@@ -334,7 +334,7 @@
       ]
     },
     "README.md": {
-      "sha256": "82b2ec9904e4dda8dd81dd61812d9e9dc18c3ea8a5102ac8bf2a82fea16aca30",
+      "sha256": "b8854db87c9374a7fb9781301c0a848b885144417e4068c669a28b69113b8298",
       "state": "generated",
       "regions": [
         {
@@ -354,7 +354,7 @@
       ]
     },
     "skills/vutoolkit/SKILL.md": {
-      "sha256": "2f9932f222e12d77b67cd27d1f457dc85a8a7351715a74135b15f3f2e85590f2",
+      "sha256": "48d74318eb3d9b20a22dae4f6f2ce1c23edc8a210c425770b42e2a45b13fc83a",
       "state": "generated",
       "regions": [
         {
@@ -368,7 +368,7 @@
       ]
     },
     "src/toolfactory/cli.ts": {
-      "sha256": "2002e0cf235fcc1681aead042147604b56a762a4ec26cd843c587d18dc384490",
+      "sha256": "ed6af34cbcd51e6be2c62810bacb8912849519bd646896ea6494d7464228234b",
       "state": "generated"
     },
     "src/toolfactory/config.ts": {
@@ -376,7 +376,7 @@
       "state": "generated"
     },
     "src/toolfactory/mcp.ts": {
-      "sha256": "4033f7b9d924fe02946d487a70563cbd7210f1256e2300c6b6ce491edbd2b6dd",
+      "sha256": "8c68191e4b3c2322efb823f22aaac2b45ce73256207697e04522bc3155b46b2f",
       "state": "generated"
     },
     "src/toolfactory/types.ts": {
@@ -440,7 +440,7 @@
       "state": "generated"
     },
     "web/src/ops.json": {
-      "sha256": "3efb45802a9e5d662c9d331057f461d88c7c79138f21aae27c9c16024626e592",
+      "sha256": "10e1de3b84c5b1b9d7bfabde7b138ac0a6d2ff0a70d8b6eae683652ae4087a3d",
       "state": "generated"
     },
     "web/src/schema-form.tsx": {

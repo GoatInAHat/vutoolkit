@@ -7,64 +7,30 @@ license: MIT
 
 # vutoolkit
 
-Use vutoolkit for an authorized student's Vanderbilt authentication, academic record, GPA projections, degree and schedule planning, and Microsoft Graph access. Prefer its existing session and API operations over rebuilding login flows.
+vutoolkit keeps an authorized Vanderbilt student signed in, with its own passkey for OneVU and the Microsoft 365 sign-in that federates through it, and lets an agent act as that student. Use its signed-in access instead of building a login flow, and never ask the student for a password, code or cookie.
 
 ## Runtime prerequisite
 
-This skill supplies instructions, not the runtime or credentials. First check whether the host already exposes `vutoolkit_*` tools or the `vutoolkit` MCP server. If not, follow the [source installation guide](https://github.com/GoatInAHat/vutoolkit#quick-start-from-source); installing this skill alone does not register the plugin. Do not assume an npm or ClawHub plugin package exists merely because an install command was generated. Verify the chosen release and the host's registered tools before using it.
+This skill supplies instructions, not the runtime or credentials. Check whether the host already exposes `vutoolkit_*` tools or the `vutoolkit` MCP server. If not, follow the [source installation guide](https://github.com/GoatInAHat/vutoolkit#quick-start-from-source); installing this skill alone does not register the plugin.
 
-## Workflow
+## Which tool
 
-1. Use the current host's account and secret vault. Keep different people's accounts in separate host vaults and data directories. `setup.status` reports configuration/browser prerequisites, not live acceptance of a passkey. A structurally valid key may still be rejected by OneVU.
-2. For GPA planning, call `record.fetch`, then pass the returned transcript to `gpa.verify`. Only describe a projection as verified when the official posted totals match; the default synthetic fixture does not verify a real student's record. Pass that same transcript to `grades.whatif` with the requested hypothetical grades.
-3. For Microsoft data, use `graph.call` with the smallest read that answers the request. Confirm the account identity with `/me` when validating a new installation. Use POST, PATCH, PUT, or DELETE only for actions authorized by the account holder.
-4. If authentication fails, report the typed error and the missing setup prerequisite. Do not claim a live check passed because a fixture or cached metadata call succeeded.
-5. For degree planning, start from `degree.audit` or `degree.graph`, retrieve official alternatives with `degree.options`, and use catalog metadata with `planner.graph`. Preserve unknown prerequisites and truncation warnings; never equate a ranked path with official eligibility.
-6. For scheduling, fetch live sections with `courses.sections`, then use `scheduler.solve`. Check TBA times, component compatibility, and term before using a result. `scheduler.cartPlan` only returns a diff; the YES extension applies user-selected cart changes, never enrollment.
-7. For first-time setup, prefer one call to `setup.run({"confirm":true})` after the account holder authorizes connecting their account. If identity is missing, configure only non-secret email/VUnetID with `setup.identity`, then retry. The operation reuses authenticated browser state or deterministically submits identity and optional `VANDERBILT_PASSWORD` from the host vault; do not drive a custom login or cookie-harvest loop. Never ask for passwords or codes in chat.
-8. Respect typed prerequisite errors. `PASSWORD_REQUIRED` means configure the named vault entry through a secure host UI or use `setup.prepare` for manual sign-in, then retry. `MFA_REQUIRED` means wait for the existing one-time approval, not generate repeated pushes. `BROWSER_UNAVAILABLE` means repair the selected compatible CDP browser/connection; never silently switch an explicit endpoint to another profile.
-9. For an asleep/unavailable account holder use `allowInteractiveVerification:false`. It reuses existing authentication without submitting a password or initiating phone verification. If no authenticated session is available, preserve progress and report the blocker; do not wake the user or call cookie-only access complete.
-10. A known-rejected toolkit key requires explicit recovery authorization and `recovery:true`; the rejected key is not retried and is preserved as `VANDERBILT_PASSKEY_PREVIOUS` only after a new credential is verified. A distinct pending credential blocks duplicate enrollment. `status:"partial"` is not full setup: check `microsoftSession` and repair that connection separately. Successful cached-session access alone does not independently test a passkey assertion.
-
-## Outlook email drafts and replies
-
-For a request to draft email in the connected Microsoft account, use `graph.call` to save an unsent Outlook draft, then verify it. Chat prose alone is not a saved draft. Follow the account holder's instructions for content, recipients, and sending; creating a draft does not authorize sending it.
-
-1. Check for a retained draft ID or an existing matching draft before creating another. For a new message, use `POST /me/messages` with the requested subject, body, and recipients; Graph saves it in Drafts by default.
-2. For a reply, retrieve the actual source message and use `POST /me/messages/{sourceId}/createReply`, or `createReplyAll` when reply-all is requested. URL-encode message IDs. A new message with a `Re:` subject is not a native reply. Preserve the source's threading and `replyTo` recipients; do not invent a source ID or silently broaden the recipient set.
-3. Use `PATCH /me/messages/{draftId}` to finish the created draft and add requested attachments through its attachment endpoint. Before replacing a reply body, retain any quoted context the user wants preserved.
-4. Read the saved message back with `GET /me/messages/{draftId}`. Verify `isDraft:true`, subject, To/Cc/Bcc recipients, full body, and requested attachments (read the attachment collection when needed). A successful create response alone is not completion. After an ambiguous write or timeout, reconcile the retained ID or search Drafts before retrying; do not create duplicate drafts.
-5. Return the verified draft ID and `webLink` when available, plus any unresolved requirement. Keep authorization or access blockers explicit. Do not call `sendMail`, `send`, `reply`, or `replyAll` to fulfill a draft-only request; these send immediately and require separate sending authorization.
-
-API references: [new draft](https://learn.microsoft.com/en-us/graph/api/user-post-messages?view=graph-rest-1.0), [reply draft](https://learn.microsoft.com/en-us/graph/api/message-createreply?view=graph-rest-1.0), [reply-all draft](https://learn.microsoft.com/en-us/graph/api/message-createreplyall?view=graph-rest-1.0), [update draft](https://learn.microsoft.com/en-us/graph/api/message-update?view=graph-rest-1.0).
+1. **Any Vanderbilt or Microsoft 365 web API:** `request`. It sends the request as the student and returns the service's own response. Brightspace is D2L, so use its Valence API (`/d2l/api/lp/1.46/users/whoami`, `/d2l/api/lp/1.46/enrollments/myenrollments/`, then per course `/d2l/api/le/1.75/{orgUnitId}/content/toc`, `/dropbox/folders/`, `/grades/values/myGradeValues/`, `/news/`). There are no per-site wrappers: read the service's own API documentation.
+2. **Anything easier in a page than an API (Outlook on the web, a form, a page without an API):** the `browser.*` tools on deployments that offer them. The browser is already signed in to Vanderbilt and Microsoft 365 and is re-signed in automatically. Start with `browser.navigate`, read with `browser.snapshot`, act with `browser.click`, `browser.type` and `browser.fill_form`.
+3. **GPA:** `record.fetch` returns the transcript and a check against Vanderbilt's posted GPAs. Call a projection verified only when `verification.ok` is true. `grades.whatif` projects hypothetical grades and reads the live record itself when no transcript is passed.
+4. **Degree planning:** start from `degree.audit` or `degree.graph`, get official alternatives with `degree.options`, then rank paths with `planner.graph`. Keep unknown prerequisites and truncation warnings; a ranked path is not official eligibility.
+5. **Scheduling:** fetch live sections with `courses.sections`, then `scheduler.solve`. Check TBA times, components and the term before using a result.
+6. **Sessions:** other tools mint and repair sessions themselves. Use `sessions.ensure` (with `force: true` to re-mint) only to warm or repair one, and `sessions.list` to see their health.
+7. **First-time setup:** one call to `setup.run({"confirm":true})` once the student has authorized connecting their account; it sends one Okta Verify push. Respect typed errors: `MFA_REQUIRED` means wait for that push, `BROWSER_UNAVAILABLE` means repair the browser connection, and a rejected toolkit key needs the student's explicit `recovery:true` authorization.
 
 ## Boundaries
 
-- Keep passkeys, cookie payloads, and tokens out of chat, logs, commits, and public test reports. `sessions.open` intentionally returns usable authentication material; pass it directly to the authorized client instead of quoting it.
-- Default to read-only live verification. Do not send test email, change enrollment, or alter remote records merely to demonstrate access.
-- Use the requested person's own Vanderbilt account. Installing the plugin does not configure their account or authorize reuse of another person's session.
-- Consult the [feature acceptance record](https://github.com/GoatInAHat/vutoolkit/blob/main/docs/ACCEPTANCE.md) for evidence and remaining limits. Generated surface coverage does not establish live feature coverage. Fresh passkey creation and real cart writes are not part of the read-only live suite.
-
-Report the operation, runtime version, whether the result was live or synthetic, and any unresolved limitation. Keep private records out of the summary.
+- A request or browser action that changes something (sends mail, submits work, posts, changes a registration) acts as the student. Do it only when the student asked for that action.
+- Keep passkeys, cookies and tokens out of chat, logs, commits and reports. `sessions.open` returns raw session material for a local browser; pass it straight to that client and never quote it.
+- Use the requested student's own account; installing the plugin does not authorize reusing someone else's session.
 
 <!-- tf:operations -->
 ## Operations
-
-### brightspace.api
-
-Authenticated GET of a D2L JSON API route on brightspace.vanderbilt.edu riding the cached vanderbilt session (establishes the SSO dance first, then GETs with the page-derived XSRF token kept internal). Returns status, final URL and the raw JSON text (bounded). Read-only: GET-only, entry URL pinned, no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
-
-Arguments: `path`, `maxChars`, `timeoutSeconds`.
-
-`vutoolkit brightspace.api --json '<arguments>'` prints a JSON result. MCP tool `brightspace.api` on server `vutoolkit` returns the same result as `structuredContent`.
-
-### brightspace.fetch
-
-Read-only authenticated fetch of one brightspace.vanderbilt.edu page riding the cached vanderbilt session (same OneVU IdP as YES: walks the dance, submits the SAML assertion hop when the IdP requires POST binding). Returns status, final URL, page title and the HTML stripped to bounded text. Cookie values never leave the vault; the entry URL is pinned to brightspace.vanderbilt.edu and no D2L write route is reachable. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
-
-Arguments: `path`, `maxChars`, `timeoutSeconds`.
-
-`vutoolkit brightspace.fetch --json '<arguments>'` prints a JSON result. MCP tool `brightspace.fetch` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### courses.detail
 
@@ -114,29 +80,13 @@ Arguments: `reportSequence`, `entrySequence`, `timeoutSeconds`.
 
 `vutoolkit degree.options --json '<arguments>'` prints a JSON result. MCP tool `degree.options` on server `vutoolkit` returns the same result as `structuredContent`.
 
-### gpa.verify
-
-The golden anchor: recompute term and cumulative GPAs from posted marks and compare against Vanderbilt's independent posted totals. Missing cumulative anchors are explicitly unverified. Run before trusting any what-if output. Defaults to the synthetic fixture; pass a live transcript to verify the real YES mapping.
-
-Arguments: `transcript`.
-
-`vutoolkit gpa.verify --json '<arguments>'` prints a JSON result. MCP tool `gpa.verify` on server `vutoolkit` returns the same result as `structuredContent`.
-
 ### grades.whatif
 
-Pure GPA projection: apply hypothetical grades onto a transcript (replaces posted grades, fills unposted ones) and report per-term and cumulative GPAs.
+GPA projection: apply hypothetical grades (replacing posted ones, filling unposted ones) and report per-term and cumulative GPAs. Uses the student's live YES record unless a transcript is passed. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
-Arguments: `transcript`, `hypotheticals`.
+Arguments: `transcript`, `hypotheticals`, `timeoutSeconds`.
 
 `vutoolkit grades.whatif --json '<arguments>'` prints a JSON result. MCP tool `grades.whatif` on server `vutoolkit` returns the same result as `structuredContent`.
-
-### outlook.inbox
-
-Read recent inbox conversation summaries through the signed-in Outlook web session. Use this for mailbox reads with Vanderbilt passkey setup. The toolkit verifies the mailbox identity and refreshes a missing session automatically.
-
-Arguments: `limit`.
-
-`vutoolkit outlook.inbox --json '<arguments>'` prints a JSON result. MCP tool `outlook.inbox` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### planner.graph
 
@@ -156,19 +106,19 @@ Arguments: `name`.
 
 ### record.fetch
 
-The YES academic record: posted terms plus in-progress unposted courses. Fixture mode for development and tests; live mode rides the cached vanderbilt session through the aai OIDC dance (mints one via the OneVU ceremony over CDP when the vault is empty) — zero manual steps. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
+The student's YES academic record as a parsed transcript (posted terms plus in-progress unposted courses), with a check that recomputes each term's GPA and the cumulative GPA from the posted marks and compares them with Vanderbilt's own posted figures. Trust a what-if only when verification.ok is true. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
-Arguments: `fixturePath`, `timeoutSeconds`.
+Arguments: `timeoutSeconds`.
 
 `vutoolkit record.fetch --json '<arguments>'` prints a JSON result. MCP tool `record.fetch` on server `vutoolkit` returns the same result as `structuredContent`.
 
-### scheduler.cartPlan
+### request
 
-Pure cart-only add/remove diff for a selected schedule. Unselected or unrelated courses are retained by default. Does not execute any requests or alter enrollment.
+Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or Outlook on the web. Cookie values never appear in the result. A non-GET request acts on the student's account: send one only for something the student asked for. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
-Arguments: `currentIds`, `chosen`, `candidates`, `keepExcluded`, `preserveSectionIds`.
+Arguments: `url`, `method`, `headers`, `body`, `maxChars`, `timeoutSeconds`.
 
-`vutoolkit scheduler.cartPlan --json '<arguments>'` prints a JSON result. MCP tool `scheduler.cartPlan` on server `vutoolkit` returns the same result as `structuredContent`.
+`vutoolkit request --json '<arguments>'` prints a JSON result. MCP tool `request` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### scheduler.solve
 
@@ -180,9 +130,9 @@ Arguments: `sections`, `excludedCourses`, `excludedSectionIds`, `blockedTimes`, 
 
 ### sessions.ensure
 
-Zero-step auth: return the cached session for the IdP, or mint a fresh one over CDP and cache it — OneVU passkey ceremony for vanderbilt, Entra-carry (identifier-first + KMSI fallback) for microsoft. Secrets resolve from the OpenClaw vault (VANDERBILT_EMAIL, VANDERBILT_PASSKEY) or VUTOOLKIT_VU_EMAIL / VUTOOLKIT_PASSKEY_JSON / VUTOOLKIT_CDP_URL env overrides. The browser is driven in its own tab, so a shared managed browser is never disturbed. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
+Return the cached session for the IdP when it still works, or mint a fresh one and cache it: the OneVU passkey ceremony for vanderbilt, the Entra carry for microsoft. force=true re-mints even a working session; a failed mint keeps the current one. Other operations call this themselves, so it is only needed to warm or repair a session. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
-Arguments: `idp`, `timeoutSeconds`.
+Arguments: `idp`, `force`, `timeoutSeconds`.
 
 `vutoolkit sessions.ensure --json '<arguments>'` prints a JSON result. MCP tool `sessions.ensure` on server `vutoolkit` returns the same result as `structuredContent`.
 
@@ -196,7 +146,7 @@ Arguments: `idp`.
 
 ### sessions.ingest
 
-Ingest a harvested browser cookie export into the configured session store: keeps only cookies in the IdP's domain scope and reports metadata only. OpenClaw deployments select the native vault; standalone file storage is supported. The harvest itself is produced by the host browser outside this toolkit.
+Ingest a harvested browser cookie export into the session store: keeps only cookies in the IdP's domain scope and reports metadata only.
 
 Arguments: `idp`, `sourcePath`.
 
@@ -210,19 +160,11 @@ Cached Vanderbilt SSO and Microsoft sessions: metadata only (idp, acquired, expi
 
 ### sessions.open
 
-Injection payload for a stored session: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Values resolve from the session vault fed by sessions.ingest; never logged, never echoed anywhere else. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
+Injection payload for a stored session, for a local browser on the student's own machine: raw Cookie header, CDP Network.setCookie params, or Playwright storageState. Never logged or echoed anywhere else. Remote deployments do not offer it. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
 Arguments: `idp`, `format`, `timeoutSeconds`.
 
 `vutoolkit sessions.open --json '<arguments>'` prints a JSON result. MCP tool `sessions.open` on server `vutoolkit` returns the same result as `structuredContent`.
-
-### sessions.refresh
-
-Re-mint and replace the cached session after successful authentication. Vanderbilt refresh proves a passkey assertion in an empty browser context; Microsoft uses the Entra carry. A failed refresh preserves the current vault entry. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
-
-Arguments: `idp`, `timeoutSeconds`.
-
-`vutoolkit sessions.refresh --json '<arguments>'` prints a JSON result. MCP tool `sessions.refresh` on server `vutoolkit` returns the same result as `structuredContent`.
 
 ### setup.enroll
 
