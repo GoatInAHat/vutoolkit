@@ -1,3 +1,4 @@
+import type { CookieRecord } from "../vault/file-store.js";
 /**
  * Minimal CDP tab driver shared by the SSO ceremonies: opens the ceremony's own tab, wires a
  * send/evaluate channel, and always closes the tab. Cookie and key material never leaves the
@@ -167,6 +168,21 @@ export async function harvestCookies(send: CdpTab["send"]): Promise<Array<{ name
     secure: typeof c.secure === "boolean" ? c.secure : undefined,
     sameSite: typeof c.sameSite === "string" ? c.sameSite : undefined,
   }));
+}
+
+/** Put these cookies into the browser's shared (default) context, where the Microsoft carry runs. */
+export async function seedBrowserCookies(cdpUrl: string, cookies: readonly CookieRecord[]): Promise<void> {
+  await withCdpTab(cdpUrl, "about:blank", async ({ send }) => {
+    await send("Storage.setCookies", {
+      cookies: cookies.map((c) => ({
+        name: c.name, value: c.value, domain: c.domain, path: c.path ?? "/",
+        ...(typeof c.expires === "number" && c.expires > 0 ? { expires: c.expires } : {}),
+        ...(c.httpOnly !== undefined ? { httpOnly: c.httpOnly } : {}),
+        secure: c.secure ?? true,
+        ...(c.sameSite === "Strict" || c.sameSite === "Lax" || c.sameSite === "None" ? { sameSite: c.sameSite } : {}),
+      })),
+    });
+  });
 }
 
 /** Native value fill so React/SPA inputs register the change; returns false when absent. */

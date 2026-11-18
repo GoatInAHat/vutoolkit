@@ -27,6 +27,7 @@ import { CounterAccountingError, runSsoCeremony, type MintedSession, type VaultP
 import { AuthError, withDeadline } from "./errors.js";
 import { probeVanderbilt, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
+import { seedBrowserCookies } from "./cdp-driver.js";
 
 export type Ceremony = typeof runSsoCeremony;
 
@@ -45,6 +46,8 @@ export interface EnsureDeps {
   ceremony?: Ceremony;
   /** Override for tests; defaults to the real Microsoft Entra-carry ceremony. */
   microsoftCeremony?: typeof microsoftSessionFromSso;
+  /** Override for tests; defaults to setting the cookies in the managed browser's shared context. */
+  seedBrowser?: typeof seedBrowserCookies;
   /** Override for tests; defaults to the real service liveness probe. */
   probe?: LivenessProbe;
   /** Override for tests; defaults to launching the managed browser when its CDP endpoint is down. */
@@ -190,7 +193,10 @@ async function mintMicrosoft(ctx: MintContext): Promise<EnsureResult> {
   } catch (error) {
     if (!(error instanceof AuthError && error.code === "OKTA_SESSION_REQUIRED")) throw error;
     // Federation hop with no Okta session in the browser: sign in with the passkey, carry again.
-    await ensureSession("vanderbilt", ctx.store, { ...ctx.deps, forceRefresh: true }); // The carry needs the shared browser's OneVU session.
+    // The passkey ceremony runs in an isolated, disposable context, so its OneVU session is put
+    // into the shared context the carry uses.
+    await ensureSession("vanderbilt", ctx.store, { ...ctx.deps, forceRefresh: true });
+    await (ctx.deps.seedBrowser ?? seedBrowserCookies)(ctx.cdpUrl, ctx.store.cookies("vanderbilt"));
     minted = await carry();
   }
   const stored = harvestToStoredSession("microsoft", minted.cookies, minted.acquiredAt);
