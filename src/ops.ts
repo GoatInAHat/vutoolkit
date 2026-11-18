@@ -17,6 +17,7 @@ import { verifyTranscript, whatIf, type Transcript } from "./gpa/engine.js";
 import { academicRecord } from "./yes/client.js";
 import { vaultNotWired } from "./vault/index.js";
 import { harvestToStoredSession, idpForHost } from "./vault/file-store.js";
+import { assertYesReadOnly } from "./yes/guard.js";
 import { ensureSession } from "./sso/ensure.js";
 import { operation, type Context, type Operation } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
@@ -67,7 +68,7 @@ const authored: Operation[] = [
   operation({
     name: "request",
     description:
-      "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or Outlook on the web. Cookie values never appear in the result. A non-GET request acts on the student's account: send one only for something the student asked for.",
+      "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or Outlook on the web. Cookie values never appear in the result. YES is read-only: enrollment and cart or planner changes there are refused. A non-GET request elsewhere acts on the student's account: send one only for something the student asked for.",
     input: z.object({
       url: z.string().url().describe("Absolute https URL on a Vanderbilt or Microsoft 365 host"),
       method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
@@ -91,7 +92,7 @@ const authored: Operation[] = [
       const owner = target.protocol === "https:" ? idpForHost(target.hostname) : null;
       if (!owner) throw new Error(`request only reaches https Vanderbilt or Microsoft 365 hosts; ${target.protocol}//${target.hostname} is neither`);
       const res = await withSession(ctx, [owner], (cookies) =>
-        sessionFetch({ url, method, headers, body }, { jar: new CookieJar(cookies) }),
+        sessionFetch({ url, method, headers, body }, { jar: new CookieJar(cookies), guard: assertYesReadOnly }),
       );
       return { ...res, text: res.text.slice(0, maxChars), truncated: res.text.length > maxChars };
     },

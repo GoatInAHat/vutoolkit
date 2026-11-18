@@ -35,7 +35,7 @@ const IDP_DOMAINS: Record<Idp, string[]> = {
   vanderbilt: ["vanderbilt.edu"],
   // The RP cookies (outlook.office.com, outlook.cloud.microsoft) ride with the IdP cookies —
   // live probe 2026-09-15 harvested all of them in one successful outlook.office.com login.
-  microsoft: ["microsoftonline.com", "microsoft.com", "live.com", "windows.net", "office.com", "office365.com", "cloud.microsoft"],
+  microsoft: ["microsoftonline.com", "microsoft.com", "live.com", "windows.net", "office.com", "office365.com", "cloud.microsoft", "sharepoint.com"],
 };
 
 /** The IdP whose session covers this host, or null when neither does. */

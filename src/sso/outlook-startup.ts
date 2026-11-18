@@ -34,7 +34,15 @@ const STARTUP_URLS = new Set([
   "https://outlook.office365.com",
 ]);
 
-/** Observe Outlook's own inbox startup request. Do not collect or replay its authorization header. */
+const debug = (message: string) => {
+  if (process.env.VUTOOLKIT_DEBUG) process.stderr.write(`vutoolkit outlook startup: ${message}\n`);
+};
+
+/**
+ * Observe Outlook's own inbox startup request. Do not collect or replay its authorization header.
+ * The tab bypasses Outlook's service worker so the startup response comes from the network and its
+ * body is readable over CDP.
+ */
 export async function watchOutlookStartup(tab: CdpTab, email: string) {
   let startup: ReturnType<typeof parseOutlookStartup>;
   let failure: AuthError | undefined;
@@ -45,6 +53,7 @@ export async function watchOutlookStartup(tab: CdpTab, email: string) {
     if (method === "Network.responseReceived") {
       const response = params.response as { url: string; status: number };
       const url = new URL(response.url);
+      if (STARTUP_URLS.has(url.origin) && /startupdata/i.test(url.pathname)) debug(`${response.status} ${url.origin}${url.pathname}`);
       if (response.status === 200 &&
           STARTUP_URLS.has(url.origin) && /^\/owa\/(?:0\/)?startupdata\.ashx$/i.test(url.pathname)) {
         pending.add(requestId);
@@ -58,9 +67,11 @@ export async function watchOutlookStartup(tab: CdpTab, email: string) {
       startup = parseOutlookStartup(JSON.parse(body), email) ?? startup;
     }).catch(error => {
       if (error instanceof AuthError) failure = error;
+      else debug(`startup body unreadable: ${String((error as Error)?.message ?? error).slice(0, 120)}`);
     });
   });
   await tab.send("Network.enable");
+  await tab.send("Network.setBypassServiceWorker", { bypass: true });
   return () => {
     if (failure) throw failure;
     return startup;

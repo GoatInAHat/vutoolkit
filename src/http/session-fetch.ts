@@ -85,6 +85,8 @@ export interface SessionFetchOptions {
   maxHops?: number;
   /** Per-hop bound, body read included. */
   hopTimeoutMs?: number;
+  /** Called before every hop is sent; throw to refuse it. */
+  guard?: (url: string, method: string) => void;
 }
 
 const decodeEntities = (s: string) =>
@@ -128,7 +130,7 @@ export function redirectStub(html: string, baseUrl: string): string | null {
 
 /**
  * Send a request through the sign-in dance and return the service's final response. A non-GET
- * request that had to sign in first is sent once more after the dance, so its method and body
+ * request that was diverted through an IdP is sent once more after the dance, so its method and body
  * reach the service rather than the IdP. Throws SessionExpiredError when the dance ends on an IdP
  * sign-in page instead of the service.
  */
@@ -140,7 +142,13 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
   const origin = new URL(request.url);
   const callerHeaders = Object.fromEntries(Object.entries(request.headers ?? {}).filter(([k]) => k.toLowerCase() !== "cookie"));
 
+  // True once an IdP intercepted the request: only then is a non-GET request sent again. A
+  // request aimed at an IdP host itself is never resent.
+  const toIdp = SIGN_IN_HOSTS.has(origin.hostname);
+  let signedIn = false;
   const send = async (url: string, method: string, headers: Record<string, string>, body?: string) => {
+    opts.guard?.(url, method);
+    if (!toIdp && SIGN_IN_HOSTS.has(new URL(url).hostname)) signedIn = true;
     const cookie = opts.jar.headerFor(url);
     const signal = AbortSignal.timeout(hopTimeoutMs);
     const res = await impl(url, {
@@ -181,6 +189,7 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
     const post = html && autoPostForm(html, url);
     if (post) {
       danced = true;
+      signedIn = !toIdp;
       url = post.action;
       method = "POST";
       body = post.body;
@@ -199,8 +208,9 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
     const host = new URL(url).hostname;
     if (SIGN_IN_HOSTS.has(host) && !SIGN_IN_HOSTS.has(origin.hostname)) throw new SessionExpiredError(host);
     const original = (request.method ?? "GET").toUpperCase();
-    if (danced && original !== "GET" && original !== "HEAD") {
-      // Signed in now: send the caller's own request once more, without another dance.
+    if (signedIn && original !== "GET" && original !== "HEAD") {
+      // The request was diverted to sign in: send the caller's own request once more, without
+      // another dance. A request the service answered with a redirect elsewhere is not resent.
       const replay = await send(request.url, original, callerHeaders, request.body);
       return finish(replay.res, replay.text, request.url);
     }

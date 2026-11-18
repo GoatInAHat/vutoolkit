@@ -34,7 +34,9 @@ when another DevTools client detaches from it.
 Not offered: the cookie and storage tools and `run_code_unsafe` (session values and code
 execution stay on the server), tools whose output is a file on this server (screenshots, PDFs,
 uploads), and test-harness controls (request mocking, offline mode, media emulation). Cookie and
-authorization header lines are redacted from every result. Set `VUTOOLKIT_BROWSER=0` to turn the
+authorization header lines are redacted from every result. YES is read-only here as in `request`:
+`yes-guard-page.cjs` (Playwright MCP's `initPage` hook) aborts enrollment and cart or planner
+requests. Set `VUTOOLKIT_BROWSER=0` to turn the
 browser off.
 
 `VUTOOLKIT_BROWSER_PROBE=https://brightspace.vanderbilt.edu/d2l/home` checks a deploy: once the
