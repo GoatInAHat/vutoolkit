@@ -88,6 +88,8 @@ export interface MicrosoftProbe {
   passwd: boolean;
   /** The federation hop stopped on OneVU's own sign-in form (no live Okta session). */
   okta?: boolean;
+  /** On the OneVU host at all, whatever the widget shows. */
+  onevu?: boolean;
   /** Microsoft's "Pick an account" tile list is showing. */
   picker?: boolean;
   /** Microsoft's exact, enabled Vanderbilt federation confirmation, not OAuth consent. */
@@ -154,7 +156,9 @@ const PROBE_EXPR =
   " kmsi: vis('#acceptButton') || (/stay signed in/i.test(heading) && vis('#idSIButton9'))," +
   " picker: /pick an account/i.test(heading) && document.querySelectorAll('[data-test-id]').length > 0," +
   " passwd: !loginfmt && vis('input[name=passwd]')," +
+  " onevu: location.hostname === 'onevu.vanderbilt.edu'," +
   " okta: location.hostname === 'onevu.vanderbilt.edu' && (vis('input[name=identifier]') || vis('[data-se=webauthn]'))," +
+  " oktaHeading: ((document.querySelector('[data-se=o-form-head]') || {}).textContent || '').trim().slice(0, 60)," +
   " debug: { heading: heading.slice(0, 60), next: vis('#idSIButton9'), back: vis('#idBtn_Back') } };" +
   "})()";
 
@@ -166,7 +170,7 @@ function traceProbe(probe: MicrosoftProbe & { debug?: unknown }, state: Microsof
     const u = new URL(probe.url);
     where = u.host + u.pathname;
   } catch { /* keep ? */ }
-  process.stderr.write(`vutoolkit microsoft probe: ${state.kind} ${where} ${JSON.stringify({ loginfmt: probe.loginfmt, kmsi: probe.kmsi, passwd: probe.passwd, okta: probe.okta, ...(probe.debug as object) })}\n`);
+  process.stderr.write(`vutoolkit microsoft probe: ${state.kind} ${where} ${JSON.stringify({ loginfmt: probe.loginfmt, kmsi: probe.kmsi, passwd: probe.passwd, okta: probe.okta, onevu: probe.onevu, oktaHeading: (probe as { oktaHeading?: string }).oktaHeading, ...(probe.debug as object) })}\n`);
 }
 
 /** Accept "Stay signed in?": the classic #acceptButton, or #idSIButton9 on the newer page. */
@@ -179,6 +183,8 @@ const pickAccount = (email: string): string =>
   " if (!tile) return false; tile.click(); return true; })()";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Consecutive probes on OneVU (about 8 s at the default step) that mean it wants a sign-in. */
+const ONEVU_STUCK_PROBES = 6;
 
 /**
  * Mint a Microsoft session from the browser: direct carry when the profile's Entra session is
@@ -199,6 +205,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
     let federationTrustClicks = 0;
     let unverifiedLandings = 0;
     let oktaSightings = 0;
+    let onevuSightings = 0;
     let finalUrl = "";
     let first = true;
     while (Date.now() < deadline) {
@@ -210,6 +217,9 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
       const state = classifyMicrosoftFlow(probe);
       traceProbe(probe, state);
       oktaSightings = state.kind === "okta" ? oktaSightings + 1 : 0;
+      // A live OneVU session answers the federation hop at once; a OneVU page that stays put is a
+      // sign-in, whichever widget state it shows.
+      onevuSightings = probe.onevu ? onevuSightings + 1 : 0;
       if (state.kind === "success") {
         if (inbox && !inbox()) {
           unverifiedLandings++;
@@ -233,7 +243,7 @@ export async function microsoftSessionFromSso(opts: MicrosoftCeremonyOptions): P
           "microsoft mint: Microsoft asked for a password, which a OneVU-federated account never does — the tenant's federation changed and needs the account holder's review",
         );
       }
-      if (state.kind === "okta" && oktaSightings >= 2) {
+      if ((state.kind === "okta" && oktaSightings >= 2) || onevuSightings >= ONEVU_STUCK_PROBES) {
         throw new AuthError("OKTA_SESSION_REQUIRED", "Microsoft sign-in federated to OneVU, and the browser holds no live OneVU session", { retryable: true });
       }
       if (state.kind === "federation-trust") {
