@@ -5,9 +5,10 @@
  * whether the browser is running, or whether another call is already minting.
  *
  * Guarantees, in order of the failures they remove:
- * - Liveness, not cookie arithmetic: a cached session is probed against the real service and a
- *   dead-but-unexpired one is re-minted (Okta and Entra idle out server-side while cookies keep
- *   a far-future expiry). Sessions acquired in the last two minutes skip the probe.
+ * - Liveness, not cookie arithmetic: a cached session is probed against the real service (for
+ *   Microsoft, a silent OpenID Connect sign-in for Outlook) and a dead-but-unexpired one is
+ *   re-minted (Okta and Entra idle out server-side while cookies keep a far-future expiry).
+ *   Sessions acquired in the last two minutes skip the probe.
  * - The managed browser is started when its CDP endpoint is down (a Gateway restart kills it).
  * - Microsoft rides OneVU federation: when the Outlook carry lands on OneVU sign-in, the passkey
  *   ceremony signs the browser in and the carry runs again.
@@ -25,7 +26,7 @@ import { nativeSecrets } from "../vault/credential-store.js";
 import { ensureBrowser, resolveBrowser } from "./browser-config.js";
 import { CounterAccountingError, runSsoCeremony, type MintedSession, type VaultPasskey } from "./ceremony.js";
 import { AuthError, withDeadline } from "./errors.js";
-import { probeVanderbilt, type LivenessProbe } from "./liveness.js";
+import { probeSession, type LivenessProbe } from "./liveness.js";
 import { MicrosoftNotConfiguredError, microsoftSessionFromSso, type MintedMicrosoftSession } from "./microsoft.js";
 import { seedBrowserCookies } from "./cdp-driver.js";
 
@@ -122,6 +123,11 @@ export function defaultSecretsRead(name: string): string {
     throw new AuthError("VAULT_SECRET_UNAVAILABLE", `the OpenClaw vault entry ${name} is empty`, { retryable: false });
   }
   return value;
+}
+
+/** The Vanderbilt account the toolkit signs in as: VUTOOLKIT_VU_EMAIL, else the vault's VANDERBILT_EMAIL. */
+export function configuredEmail(env: NodeJS.ProcessEnv = process.env, read: (name: string) => string = defaultSecretsRead): string {
+  return env.VUTOOLKIT_VU_EMAIL || read("VANDERBILT_EMAIL");
 }
 
 /** Compatibility wrapper for callers with an already-selected endpoint. */
@@ -228,7 +234,7 @@ async function mint(idp: Idp, store: FileSessionStore, deps: EnsureDeps): Promis
     store,
     deps,
     cdpUrl,
-    email: () => (email ??= env.VUTOOLKIT_VU_EMAIL || secretsRead("VANDERBILT_EMAIL")),
+    email: () => (email ??= configuredEmail(env, secretsRead)),
     passkey: () => (passkey ??= parseVaultPasskey(env.VUTOOLKIT_PASSKEY_JSON || secretsRead("VANDERBILT_PASSKEY"))),
   };
   const trace = tracer(env, idp);
@@ -266,18 +272,20 @@ async function ensureOnce(idp: Idp, store: FileSessionStore, deps: EnsureDeps): 
     if (justAcquired(existing, now)) {
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: existing.healthy };
     }
-    // Re-harvest a Microsoft session after the grace period. The Outlook browser can
-    // renew its own credentials, so a successful page load would not prove the old cookies alive.
-    if (idp === "microsoft" && !deps.probe) return mint(idp, store, deps);
+    // Ask the service itself, with the stored cookies alone: for Microsoft, whether its sign-in
+    // service would silently sign Outlook in. A page load in a browser would not prove it, since
+    // Outlook's page can renew its own credentials without the stored cookies.
     const cookies: CookieRecord[] = store.cookies(idp);
     const probeStarted = Date.now();
-    const alive = deps.probe ? await deps.probe(idp, cookies) : await probeVanderbilt(cookies);
+    const alive = await (deps.probe ?? probeSession)(idp, cookies);
     tracer(deps.env ?? process.env, idp)(`probe ${alive ? "alive" : "dead"}`, probeStarted);
     if (alive) {
       if (!existing.healthy) await store.put({ ...existing, cookies, healthy: true });
       return { source: "cache", idp, acquiredAt: existing.acquiredAt, expiresAt: existing.expiresAt, healthy: true };
     }
-    // Replace only after a successful mint. An auth failure must not erase the preserved row.
+    // Replace only after a successful mint. An auth failure must not erase the preserved row,
+    // but it must stop reading as healthy.
+    if (existing.healthy) await store.put({ ...existing, cookies, healthy: false });
   }
   return mint(idp, store, deps);
 }

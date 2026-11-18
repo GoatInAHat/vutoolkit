@@ -10,7 +10,8 @@ import type { CookieRecord } from "../vault/file-store.js";
 import { sessionStore } from "../vault/file-store.js";
 import { credentialEnv } from "../vault/credential-store.js";
 import { ensureSession } from "../sso/ensure.js";
-import { SessionExpiredError } from "./session-fetch.js";
+import { SessionExpiredError, type SessionResponse } from "./session-fetch.js";
+import { probeSession, type LivenessProbe } from "../sso/liveness.js";
 
 export const vaultStore = (ctx: Context) => sessionStore(ctx.dataDir, credentialEnv(ctx.config));
 
@@ -30,4 +31,29 @@ export async function withSession<T>(ctx: Context, idps: readonly Idp[], read: (
     await ensureSession(idp, store, { forceRefresh: true });
     return read(cookies());
   }
+}
+
+const BEARER_NOTE =
+  "401 although the Microsoft session is live: this endpoint wants an OAuth bearer token (Outlook REST, Microsoft Graph and Outlook's own service calls do), which the signed-in session's cookies cannot supply. Open Outlook in the signed-in browser instead.";
+
+/**
+ * `request` on the stored sessions. A 401 from a Microsoft 365 host is how Outlook and the other
+ * Microsoft APIs refuse a request instead of redirecting to sign-in, so it gets the same treatment
+ * as a sign-in redirect when the session itself is the cause: the Microsoft session is checked live,
+ * re-minted when Microsoft no longer accepts it, and the request sent once more. When the session is
+ * live the 401 is the endpoint's own answer and is returned with a trace line saying so.
+ */
+export async function requestWithSession(
+  ctx: Context,
+  owner: Idp,
+  send: (cookies: CookieRecord[]) => Promise<SessionResponse>,
+  probe: LivenessProbe = probeSession,
+): Promise<SessionResponse> {
+  const res = await withSession(ctx, [owner], send);
+  if (res.status !== 401 || owner !== "microsoft") return res;
+  const store = vaultStore(ctx);
+  if (await probe("microsoft", store.cookies("microsoft"))) return { ...res, trace: [...res.trace, BEARER_NOTE] };
+  await ensureSession("microsoft", store, { forceRefresh: true });
+  const retried = await withSession(ctx, [owner], send);
+  return { ...retried, trace: [...res.trace, "401: Microsoft no longer accepted the stored session; re-minted it and sent the request again", ...retried.trace] };
 }

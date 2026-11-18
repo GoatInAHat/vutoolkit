@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyMicrosoftFlow, isMicrosoftSuccess, MicrosoftNotConfiguredError } from "./microsoft.js";
+import { carryMicrosoftSignIn, classifyMicrosoftFlow, isMicrosoftSuccess, MICROSOFT_PROBE_EXPR, MicrosoftNotConfiguredError, type MicrosoftProbe } from "./microsoft.js";
 
 describe("isMicrosoftSuccess", () => {
   it("accepts the live-proven Outlook landing (2026-09-15)", () => {
@@ -53,5 +53,57 @@ describe("MicrosoftNotConfiguredError", () => {
     const e = new MicrosoftNotConfiguredError("needs decision");
     expect(e).toBeInstanceOf(Error);
     expect(e.name).toBe("MicrosoftNotConfiguredError");
+  });
+});
+
+describe("carryMicrosoftSignIn", () => {
+  const EMAIL = "synthetic@vanderbilt.edu";
+  const page = (over: Partial<MicrosoftProbe>): MicrosoftProbe => ({ url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", loginfmt: false, kmsi: false, passwd: false, ...over });
+
+  /** A scripted page: each probe returns the next state; actions are recorded, never executed. */
+  function scripted(states: MicrosoftProbe[]) {
+    const actions: string[] = [];
+    let i = 0;
+    const evaluate = async (expr: string) => {
+      if (expr === MICROSOFT_PROBE_EXPR) return states[Math.min(i++, states.length - 1)];
+      actions.push(expr);
+      return true;
+    };
+    return { evaluate, actions };
+  }
+
+  it("picks this account's tile on Outlook's account picker and returns where it lands", async () => {
+    const { evaluate, actions } = scripted([page({ picker: true }), page({ kmsi: true }), page({ url: "https://outlook.cloud.microsoft/mail/" })]);
+    const url = await carryMicrosoftSignIn({ evaluate, email: EMAIL, stepMs: 1 });
+    expect(url).toBe("https://outlook.cloud.microsoft/mail/");
+    expect(actions[0]).toContain(JSON.stringify(EMAIL));
+    expect(actions).toHaveLength(2);
+  });
+
+  it("enters only the identifier, then rides OneVU federation and the trust confirmation", async () => {
+    const { evaluate, actions } = scripted([
+      page({ loginfmt: true }),
+      page({ url: "https://onevu.vanderbilt.edu/app/office365/x/sso/wsfed/passive", onevu: true }),
+      page({ url: "https://login.microsoftonline.com/login.srf", federationTrust: true }),
+      page({ url: "https://outlook.cloud.microsoft/mail/0/" }),
+    ]);
+    await expect(carryMicrosoftSignIn({ evaluate, email: EMAIL, stepMs: 1 })).resolves.toBe("https://outlook.cloud.microsoft/mail/0/");
+    expect(actions.some((a) => a.includes("loginfmt") && a.includes(EMAIL))).toBe(true);
+    expect(actions.some((a) => /passwd/.test(a))).toBe(false);
+  });
+
+  it("asks for a OneVU mint when OneVU wants a sign-in", async () => {
+    const { evaluate } = scripted([page({ url: "https://onevu.vanderbilt.edu/oauth2/v1/authorize", onevu: true, okta: true })]);
+    await expect(carryMicrosoftSignIn({ evaluate, email: EMAIL, stepMs: 1 })).rejects.toMatchObject({ code: "OKTA_SESSION_REQUIRED" });
+  });
+
+  it("refuses a password prompt instead of guessing a credential", async () => {
+    const { evaluate } = scripted([page({ passwd: true })]);
+    await expect(carryMicrosoftSignIn({ evaluate, email: EMAIL, stepMs: 1 })).rejects.toBeInstanceOf(MicrosoftNotConfiguredError);
+  });
+
+  it("gives up within its bound on a page it cannot finish", async () => {
+    const { evaluate } = scripted([page({})]);
+    await expect(carryMicrosoftSignIn({ evaluate, email: EMAIL, stepMs: 5, timeoutMs: 30 })).rejects.toMatchObject({ code: "MICROSOFT_FLOW_CHANGED" });
   });
 });

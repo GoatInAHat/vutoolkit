@@ -4,6 +4,12 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.6.1
+
+- Fix the signed-in browser landing on Microsoft's sign-in page for Outlook while `sessions.list` said the Microsoft session was healthy. Outlook on the web signs in with tokens its page keeps in local storage, and its page loads first and only redirects to sign-in a few seconds later, so the browser never noticed and the cookies it was given could not sign it in. The browser now waits for such a page to settle, finishes Microsoft's sign-in itself in the background (account tile, identifier, OneVU federation, "Stay signed in?"; never a password), minting OneVU with the toolkit passkey when the federation hop needs it, and opens the page again. Reloading the stored sessions no longer wipes the browser's own app sign-ins and local storage; only the sign-in hosts' cookies are renewed.
+- `sessions.ensure` judges a cached Microsoft session by a live check (a silent OpenID Connect sign-in for Outlook with the stored cookies, nothing redeemed) instead of re-minting it after two minutes regardless, and a session that fails a live check stops reading as healthy in `sessions.list`.
+- `request`: a 401 from a Microsoft 365 host now checks the Microsoft session live; when Microsoft no longer accepts it, the session is re-minted and the request sent once more. When the session is live, the 401 is the endpoint's own answer: Outlook REST, Microsoft Graph and Outlook's service calls want an OAuth bearer token, which a signed-in session's cookies cannot supply, and the trace now says so. Read mail in the signed-in browser.
+
 ## 0.6.0
 
 The tool surface now gives the agent the signed-in session itself instead of per-site wrappers.

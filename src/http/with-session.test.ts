@@ -8,7 +8,7 @@ import { SessionExpiredError } from "./session-fetch.js";
 const ensureSession = vi.fn(async (..._args: unknown[]) => ({}));
 vi.mock("../sso/ensure.js", () => ({ ensureSession: (...args: unknown[]) => ensureSession(...args) }));
 vi.mock("../vault/file-store.js", () => ({ sessionStore: () => ({ cookies: () => [] }) }));
-const { withSession } = await import("./with-session.js");
+const { requestWithSession, withSession } = await import("./with-session.js");
 const ctx = { dataDir: "/tmp/unused", config: {} };
 
 describe("withSession", () => {
@@ -28,5 +28,36 @@ describe("withSession", () => {
     await expect(withSession(ctx, ["vanderbilt"], read)).resolves.toBe("ok");
     expect(read).toHaveBeenCalledTimes(2);
     expect(ensureSession).toHaveBeenLastCalledWith("microsoft", expect.anything(), { forceRefresh: true });
+  });
+});
+
+describe("requestWithSession", () => {
+  afterEach(() => vi.clearAllMocks());
+  const response = (status: number) => ({ status, url: "https://outlook.office.com/api/v2.0/me/messages", contentType: "", headers: {}, text: "", trace: [`${status} outlook.office.com/api/v2.0/me/messages`] });
+
+  it("re-mints a Microsoft session that Microsoft no longer accepts after a 401, and sends the request once more", async () => {
+    const send = vi.fn(async () => response(200));
+    send.mockResolvedValueOnce(response(401));
+    const res = await requestWithSession(ctx, "microsoft", send, async () => false);
+    expect(res.status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(ensureSession).toHaveBeenCalledWith("microsoft", expect.anything(), { forceRefresh: true });
+    expect(res.trace.join("\n")).toMatch(/re-minted/);
+  });
+
+  it("does not burn a live session on an endpoint that wants a bearer token, and says so", async () => {
+    const send = vi.fn(async () => response(401));
+    const res = await requestWithSession(ctx, "microsoft", send, async () => true);
+    expect(res.status).toBe(401);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(ensureSession).not.toHaveBeenCalledWith("microsoft", expect.anything(), { forceRefresh: true });
+    expect(res.trace.at(-1)).toMatch(/bearer token/);
+  });
+
+  it("leaves other statuses and Vanderbilt responses alone", async () => {
+    const probe = vi.fn(async () => false);
+    await requestWithSession(ctx, "microsoft", async () => response(404), probe);
+    await requestWithSession(ctx, "vanderbilt", async () => response(401), probe);
+    expect(probe).not.toHaveBeenCalled();
   });
 });
