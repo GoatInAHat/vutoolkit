@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { cursor, flattenEvent, flattenFolder, flattenMessage, folderRef, owaOperations, searchRestriction } from "./operations.js";
+import { cursor, flattenEvent, flattenFolder, flattenMessage, folderRef, isMailFolder, owaOperations, searchRestriction } from "./operations.js";
 import type { OwaToken } from "./client.js";
 
 const token: OwaToken = { token: "t", origin: "https://outlook.cloud.microsoft", expiresAt: Date.now() + 3_600_000 };
@@ -32,6 +32,15 @@ describe("flattening", () => {
     expect(flattenEvent({ ItemId: { Id: "E" }, Subject: "Lab", Start: "s", End: "e", IsAllDayEvent: false, Location: { DisplayName: "Room 1" }, Organizer: { Mailbox: { Name: "Lee" } } })).toEqual({
       id: "E", subject: "Lab", start: "s", end: "e", allDay: false, location: "Room 1", organizer: { name: "Lee" },
     });
+  });
+  it("keeps only mail folders", () => {
+    expect(isMailFolder({ class: "IPF.Note", wellKnown: "inbox" })).toBe(true);
+    expect(isMailFolder({ class: "IPF.Note" })).toBe(true);
+    expect(isMailFolder({ class: "IPF.Note.OutlookHomepage" })).toBe(true);
+    expect(isMailFolder({ wellKnown: "archive", class: "IPF" })).toBe(true);
+    expect(isMailFolder({ class: "IPF.Appointment", wellKnown: "calendar" })).toBe(false);
+    expect(isMailFolder({ class: "IPF.Contact", wellKnown: "contacts" })).toBe(false);
+    expect(isMailFolder({ class: "IPF.Note.Microsoft.Conversation" })).toBe(true);
   });
   it("maps folder names", () => {
     expect(folderRef("Sent")).toEqual({ __type: "DistinguishedFolderId:#Exchange", Id: "sentitems" });

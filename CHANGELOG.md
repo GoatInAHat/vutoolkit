@@ -4,6 +4,10 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.7.1
+
+- Railway kit: `mail.folders` lists only mail folders. It listed the calendar, contacts, tasks, notes and Yammer folders too, because it kept every well-known folder.
+
 ## 0.7.0
 
 Outlook mail and calendar as tools, on Outlook on the web's own service and vutoolkit's existing sign-in (no Graph app, no new OAuth client).
