@@ -89,6 +89,7 @@ describe("tools", () => {
     expect(await ops(fetch)["owa.call"].handler({ action: "FindItem", body: {}, raw: false }, ctx)).toMatchObject({ access: "read", status: 200, response: { Body: { ResponseMessages: { Items: [] } } } });
     await expect(ops(fetch, false)["owa.call"].handler({ action: "SendItem", body: {}, raw: false }, ctx)).rejects.toMatchObject({ code: "OWA_WRITES_DISABLED" });
     await expect(ops(fetch, false)["owa.call"].handler({ action: "BrandNewThing", body: {}, raw: false }, ctx)).rejects.toMatchObject({ code: "OWA_WRITES_DISABLED" });
+    await expect(ops(fetch, false)["owa.call"].handler({ action: "FindItem", body: { QueryString: "x" }, raw: false }, ctx)).rejects.toMatchObject({ code: "OWA_WRITES_DISABLED" });
     await ops(fetch, true)["owa.call"].handler({ action: "SendItem", body: {}, raw: false }, ctx);
     expect(fetch).toHaveBeenCalledTimes(2);
   });

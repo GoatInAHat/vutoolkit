@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 import { accessOf, catalogSource, describeAction, describeType, knownAction, listActions } from "./catalog.js";
-import { expectSuccess, owaCall, OwaError, stripTypes, type OwaTransport } from "./client.js";
+import { expectSuccess, owaCall, OwaError, sideEffect, stripTypes, type OwaTransport } from "./client.js";
 import type { Operation } from "../toolfactory/types.js";
 
 export interface OwaOptions {
@@ -224,11 +224,12 @@ export function owaOperations(opts: OwaOptions): Operation[] {
     requires: ["net"],
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     handler: async ({ action, body, raw }: { action: string; body: Record<string, unknown>; raw: boolean }) => {
-      const access = accessOf(action);
+      const effect = sideEffect(action, body);
+      const access = effect ? "write" : accessOf(action);
       if (access === "write" && !writes) {
         throw new OwaError(
           "OWA_WRITES_DISABLED",
-          `${action} ${knownAction(action) ? "changes the mailbox" : "is not a known read"}, and this server has Outlook writes turned off (VUTOOLKIT_OWA_WRITES=0).`,
+          `${effect ?? `${action} ${knownAction(action) ? "changes the mailbox" : "is not a known read"}`}, and this server has Outlook writes turned off (VUTOOLKIT_OWA_WRITES=0).`,
         );
       }
       const result = await call(action, body);

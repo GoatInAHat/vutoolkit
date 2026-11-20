@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { envelope, expectSuccess, jwtExpiry, owaCall, OwaError, stripTypes, type OwaToken } from "./client.js";
+import { envelope, expectSuccess, sideEffect, jwtExpiry, owaCall, OwaError, stripTypes, type OwaToken } from "./client.js";
 
 const token = (n: number): OwaToken => ({ token: `t${n}`, origin: "https://outlook.cloud.microsoft", anchorMailbox: "PUID:1@tenant", expiresAt: Date.now() + 3_600_000 });
 const response = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -48,6 +48,11 @@ describe("owaCall", () => {
     await expect(owaCall({ token: async () => token(1), fetch: fetch as never }, "FindItem", {})).rejects.toMatchObject({ code: "OWA_HTTP_ERROR", status: 500 });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it("sends actions to the path Outlook serves them from", async () => {
+    const fetch = vi.fn(async () => response(200, {}));
+    await owaCall({ token: async () => token(1), fetch: fetch as never }, "GetTimeZoneOffsets", {});
+    expect((fetch.mock.calls[0] as any)[0]).toBe("https://outlook.cloud.microsoft/owa/published/service.svc?action=GetTimeZoneOffsets&app=Mail");
+  });
   it("refuses an action name that is not one", async () => {
     await expect(owaCall({ token: async () => token(1) }, "Find Item?x=1", {})).rejects.toBeInstanceOf(OwaError);
   });
@@ -66,5 +71,14 @@ describe("helpers", () => {
     const payload = Buffer.from(JSON.stringify({ exp: 1_800_000_000 })).toString("base64url");
     expect(jwtExpiry(`h.${payload}.s`)).toBe(1_800_000_000_000);
     expect(jwtExpiry("not-a-jwt")).toBeUndefined();
+  });
+});
+
+describe("sideEffect", () => {
+  it("flags QueryString searches, bare or in an envelope", () => {
+    expect(sideEffect("FindItem", { QueryString: "x" })).toMatch(/EWS Search/);
+    expect(sideEffect("FindItem", { Header: {}, Body: { QueryString: { Value: "x" } } })).toMatch(/EWS Search/);
+    expect(sideEffect("FindItem", { Restriction: {} })).toBeUndefined();
+    expect(sideEffect("GetItem", { QueryString: "x" })).toBeUndefined();
   });
 });

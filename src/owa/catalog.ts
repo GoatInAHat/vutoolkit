@@ -5,6 +5,7 @@
  * and request bodies checked against a real mailbox.
  */
 import { catalog } from "./catalog.generated.js";
+import { ACTION_PATH } from "./client.js";
 import { classifyAction, type Access, type Field, type TypeDef } from "./xsd.js";
 
 /** Actions Outlook on the web calls that the EWS schema does not define. */
@@ -23,8 +24,6 @@ export const OWA_ONLY: Record<string, { access: Access; summary: string }> = {
   UpdateUserGroupsSetConfiguration: { access: "write", summary: "Changes the user's group list settings." },
 };
 
-/** Paths other than /owa/service.svc some actions are served from. */
-export const ACTION_PATH: Record<string, string> = { GetTimeZoneOffsets: "/owa/published/service.svc" };
 
 export interface ActionSummary {
   action: string;

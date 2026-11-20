@@ -97,6 +97,9 @@ const RETRY_STATUSES = new Set([401, 440]);
  * may run the browser's background Microsoft re-auth. Any other non-2xx status is an OwaError;
  * a 200 with ResponseClass "Error" items is returned as the service sent it.
  */
+/** Actions Outlook serves from a path other than /owa/service.svc. */
+export const ACTION_PATH: Record<string, string> = { GetTimeZoneOffsets: "/owa/published/service.svc" };
+
 export async function owaCall(transport: OwaTransport, action: string, body: unknown, opts: { timeZone?: string; signal?: AbortSignal } = {}): Promise<OwaResult> {
   assertActionName(action);
   const doFetch = transport.fetch ?? fetch;
@@ -112,7 +115,7 @@ export async function owaCall(transport: OwaTransport, action: string, body: unk
       "x-req-source": "Mail",
     };
     if (token.anchorMailbox) headers["x-anchormailbox"] = token.anchorMailbox;
-    return doFetch(`${token.origin}/owa/service.svc?action=${encodeURIComponent(action)}&app=Mail`, { method: "POST", headers, body: payload, signal: opts.signal });
+    return doFetch(`${token.origin}${ACTION_PATH[action] ?? "/owa/service.svc"}?action=${encodeURIComponent(action)}&app=Mail`, { method: "POST", headers, body: payload, signal: opts.signal });
   };
   let res = await send(await transport.token(false));
   if (RETRY_STATUSES.has(res.status)) res = await send(await transport.token(true));
@@ -158,4 +161,23 @@ export function jwtExpiry(token: string): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** The request body inside a body or a whole envelope. */
+export function innerBody(body: unknown): Record<string, unknown> {
+  const o = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+  const inner = isEnvelope(o) ? o.Body : o;
+  return inner && typeof inner === "object" && !Array.isArray(inner) ? (inner as Record<string, unknown>) : {};
+}
+
+/**
+ * Why a request that reads by action name would still change the mailbox, or undefined.
+ * FindItem / FindConversation with a QueryString make Outlook create an "EWS Search" search folder.
+ */
+export function sideEffect(action: string, body: unknown): string | undefined {
+  const inner = innerBody(body);
+  if (/^Find(?:Item|Conversation|People)$/.test(action) && inner.QueryString !== undefined && inner.QueryString !== null && inner.QueryString !== "") {
+    return `${action} with a QueryString creates an "EWS Search" search folder in the mailbox; use a Restriction instead`;
+  }
+  return undefined;
 }
