@@ -59,7 +59,8 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
         args: ["--disable-dev-shm-usage"],
       },
       // YES stays read-only in the browser too (src/yes/guard.ts).
-      initPage: [fileURLToPath(new URL("./yes-guard-page.cjs", import.meta.url))],
+      // owa-page.cjs keeps Outlook's own token for the mail and calendar tools (src/owa).
+      initPage: [fileURLToPath(new URL("./yes-guard-page.cjs", import.meta.url)), fileURLToPath(new URL("./owa-page.cjs", import.meta.url))],
     },
     capabilities: ["core", "core-tabs", "core-navigation", "core-input", "storage", "network"],
     outputDir,
@@ -146,8 +147,17 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
     return call(name, args);
   }
 
+  const owa = owaTransport({ call, driver, reload, navigateSignedIn, serialize: (task) => {
+    const pending = queue.then(async () => {
+      if (Date.now() - loadedAt > RELOAD_MS) await reload();
+      return task();
+    });
+    queue = pending.catch(() => {});
+    return pending;
+  }, dataDir, log });
+
   const { tools } = await client.listTools();
-  return tools
+  const ops = tools
     .filter((tool) => !WITHHELD.test(tool.name))
     .map((tool) => ({
       name: tool.name.replace(/^browser_/, "browser."),
@@ -166,4 +176,98 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
         });
       },
     }));
+  // The OWA transport rides along for server.mjs (src/owa/operations.ts).
+  return Object.assign(ops, { owa });
+}
+
+const OWA = Symbol.for("vutoolkit.owa");
+const OUTLOOK_MAIL = "https://outlook.cloud.microsoft/mail/";
+/** A token this close to expiry is replaced before use. */
+const OWA_MARGIN_MS = 5 * 60_000;
+const OWA_WAIT_MS = 45_000;
+
+/**
+ * Outlook's bearer token for src/owa/client.ts, taken from the signed-in browser's own Outlook
+ * requests (owa-page.cjs). When none is fresh enough, Outlook is opened in a background tab of the
+ * same browser, signed in as browser.navigate would (re-minting sessions when Microsoft asks), and
+ * its first service request supplies the token; the tab is then closed. The agent's own tab is not
+ * touched. The token stays in this process and is never part of a tool result.
+ */
+function owaTransport({ call, driver, navigateSignedIn, serialize, dataDir, log }) {
+  const shared = () => (globalThis[OWA] ??= { context: undefined, token: undefined, recorded: new Map(), listeners: new Set() });
+  const recordedFile = join(dataDir, "browser", "owa-recorded.json");
+  let persisted = {};
+  try { persisted = JSON.parse(readFileSync(recordedFile, "utf8")); } catch { /* none yet */ }
+  let savedCount = Object.keys(persisted).length;
+  const save = () => {
+    const all = { ...persisted, ...Object.fromEntries(shared().recorded) };
+    if (Object.keys(all).length === savedCount) return;
+    try {
+      writeFileSync(`${recordedFile}.tmp`, JSON.stringify(all), { mode: 0o600 });
+      renameSync(`${recordedFile}.tmp`, recordedFile);
+      persisted = all;
+      savedCount = Object.keys(all).length;
+    } catch { /* best effort */ }
+  };
+
+  const usable = (t, fresh, since) => t && t.expiresAt - Date.now() > OWA_MARGIN_MS && (!fresh || t.capturedAt > since);
+
+  async function capture(fresh, since) {
+    const s = shared();
+    if (usable(s.token, fresh, since)) return s.token;
+    // Playwright MCP opens its browser on the first tool call that needs a page.
+    if (!s.context) await call("browser_tabs", { action: "list" });
+    if (!s.context) await call("browser_snapshot", {});
+    if (!s.context) throw Object.assign(new Error("The signed-in browser is not running, so Outlook's token is unavailable."), { code: "OWA_NO_BROWSER" });
+    const page = await s.context.newPage();
+    let wake;
+    const listener = () => wake?.();
+    s.listeners.add(listener);
+    try {
+      const nav = async (url) => {
+        try {
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+          return { text: `- Page URL: ${page.url()}\n- Page Title: ${await page.title().catch(() => "")}` };
+        } catch (error) {
+          return { text: `- Page URL: ${page.url()}\n${String(error?.message ?? error).split("\n")[0]}`, isError: true };
+        }
+      };
+      const backgroundDriver = {
+        ...driver,
+        navigate: nav,
+        snapshot: async () => ({ text: `- Page URL: ${page.url()}\n- Page Title: ${await page.title().catch(() => "")}` }),
+        evaluate: (expression) => page.evaluate(`(${expression})`).catch(() => null),
+      };
+      const landed = await navigateSignedIn(backgroundDriver, OUTLOOK_MAIL);
+      if (landed.isError) log(`owa: opening Outlook failed: ${landed.text.split("\n").slice(1).join(" ").slice(0, 200)}`);
+      const deadline = Date.now() + OWA_WAIT_MS;
+      while (!usable(s.token, true, since) && Date.now() < deadline) {
+        await new Promise((resolve) => { wake = resolve; setTimeout(resolve, 2000); });
+      }
+      if (!usable(s.token, true, since)) {
+        throw Object.assign(new Error(`Outlook did not sign in in the browser (it ended on ${new URL(page.url()).origin}); browser.navigate to ${OUTLOOK_MAIL} shows why.`), { code: "OWA_NO_TOKEN" });
+      }
+      log("owa: took a fresh Outlook token from the signed-in browser");
+      return s.token;
+    } finally {
+      s.listeners.delete(listener);
+      await page.close().catch(() => {});
+      save();
+    }
+  }
+
+  return {
+    /** A usable token; `fresh` (after a 401) insists on one newer than the one that failed. */
+    async token(fresh) {
+      const since = fresh ? shared().token?.capturedAt ?? 0 : 0;
+      const t = shared().token;
+      if (usable(t, false, 0) && !fresh) return t;
+      return serialize(() => capture(fresh, since));
+    },
+    /** The request shape Outlook's own page sent for an action, when one was seen. */
+    recorded(action) {
+      save();
+      return shared().recorded.get(action) ?? persisted[action];
+    },
+  };
 }

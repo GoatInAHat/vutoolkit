@@ -4,6 +4,15 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 
 ## Unreleased
 
+## 0.7.0
+
+Outlook mail and calendar as tools, on Outlook on the web's own service and vutoolkit's existing sign-in (no Graph app, no new OAuth client).
+
+- Railway kit: add `mail.search`, `mail.read`, `mail.folders` and `calendar.view`, with flat results and paging behind a cursor. `mail.search` filters one folder by words in the subject or body, sender, unread and received dates; `mail.read` returns a message's text and attachment names without marking it read; `calendar.view` lists events with offsets, location, organizer, response and meeting link.
+- Railway kit: add `owa.actions`, `owa.describe` and `owa.call` for every other Exchange action. The catalog is generated (`scripts/owa-catalog.mjs`) from Microsoft's published EWS protocol schemas (73 operations, 718 types) and Microsoft's EWS reference (95 operations, including Inbox rules, out-of-office, availability and mail tips), plus the actions only Outlook on the web uses, such as `GetCalendarView`. Each action is marked read or write; an action the catalog does not know counts as a write. `owa.describe` gives the request fields, the types they use, the JSON conventions and an example body, and shows the request shape Outlook's own page sent for that action when the browser has seen one (structure only, no content).
+- Writes through `owa.call` are on by default and act on the real mailbox. Set `VUTOOLKIT_OWA_WRITES=0` to refuse write and unknown actions; `VUTOOLKIT_OWA=0` turns the Outlook tools off.
+- The token is the one Outlook's page already holds in the signed-in browser. When none is fresh, Outlook is opened in a background tab of that browser (signed in again in the background if Microsoft asks), its token taken from its own request and the tab closed; a 401 gets one retry on a fresh token. The token stays on the server and never appears in a result.
+
 ## 0.6.2
 
 - Fix every `request` that got a 401 from a Microsoft 365 host re-minting the Microsoft session and still returning 401. 0.6.1 judged the session by a silent sign-in with the stored cookies, but Microsoft's sign-in service answers "no user is signed in" (AADSTS50058) for those cookies even seconds after a successful mint, so the check called every session dead. The check is gone: `sessions.ensure` re-mints a Microsoft session past its two-minute grace period as 0.6.0 did, and a 401 is retried once on a fresh session only when the request went out on an older one. A 401 on a fresh session comes back with the trace line saying the endpoint wants an OAuth bearer token.

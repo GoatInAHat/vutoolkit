@@ -26,6 +26,19 @@ if (process.env.VUTOOLKIT_BROWSER !== "0") {
     });
     operations.push(...browser);
     log(`browser: ${browser.length} tools ready`);
+    // Outlook mail and calendar on Outlook on the web's own service, with the browser's token.
+    if (process.env.VUTOOLKIT_OWA !== "0" && browser.owa) {
+      const { owaOperations } = await import(new URL("dist/owa/operations.js", root).href);
+      const writes = !["0", "false", "off", "no"].includes(String(process.env.VUTOOLKIT_OWA_WRITES ?? "1").toLowerCase());
+      const owa = owaOperations({
+        transport: browser.owa,
+        recorded: (action) => browser.owa.recorded(action),
+        writes,
+        timeZone: process.env.VUTOOLKIT_OWA_TIMEZONE || undefined,
+      });
+      operations.push(...owa);
+      log(`owa: ${owa.length} tools ready (writes ${writes ? "on" : "off"})`);
+    }
   } catch (error) {
     log(`browser: unavailable (${error?.message ?? error}); serving without it`);
   }
