@@ -94,6 +94,15 @@ export function flattenFolder(f: Obj) {
   });
 }
 
+/** Well-known folders that hold mail, kept even when Outlook gives them another folder class. */
+const MAIL_FOLDERS = new Set(["inbox", "sentitems", "drafts", "deleteditems", "junkemail", "archive", "outbox"]);
+
+/** True for a mail folder; calendar, contacts, tasks, notes and Yammer folders are left out. */
+export function isMailFolder(f: { class?: unknown; wellKnown?: unknown }): boolean {
+  if (typeof f.wellKnown === "string" && MAIL_FOLDERS.has(f.wellKnown)) return true;
+  return !f.class || String(f.class).startsWith("IPF.Note");
+}
+
 export function flattenEvent(e: Obj) {
   const location = e.Location?.DisplayName ?? (typeof e.Location === "string" ? e.Location : undefined);
   return prune({
@@ -263,7 +272,7 @@ export function owaOperations(opts: OwaOptions): Operation[] {
         if (root.IncludesLastItemInRange !== false || !page.length) break;
         offset = typeof root.IndexedPagingOffset === "number" ? root.IndexedPagingOffset : offset + page.length;
       }
-      return { folders: out.filter((f) => !f.class || String(f.class).startsWith("IPF.Note") || f.wellKnown) };
+      return { folders: out.filter(isMailFolder) };
     },
   };
 
