@@ -7,6 +7,7 @@ Notable user-facing changes are recorded here. Published versions and artifacts 
 ## 0.7.1
 
 - Railway kit: `mail.folders` lists only mail folders. It listed the calendar, contacts, tasks, notes and Yammer folders too, because it kept every well-known folder.
+- Build: move to toolfactory 0.4.12, so the web scaffold drift check passes again on Node 24.
 
 ## 0.7.0
 
