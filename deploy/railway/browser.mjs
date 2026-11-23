@@ -8,6 +8,14 @@
 // Playwright code, are not offered, and cookie or authorization header lines are redacted from
 // every result. YES pages are read-only: yes-guard-page.cjs refuses enrollment and cart or
 // planner requests.
+//
+// The browser is shared by every MCP client of this server, and the MCP endpoint is stateless (a
+// fresh server per request, so there is no session to key on). So each caller works in a tab of its
+// own, named by an id: browser.navigate without `tab` opens a new tab and returns its id, and every
+// browser tool takes `tab` and runs in that tab, selected with Playwright MCP's own tab tool before
+// the call. A call without `tab` is refused while more than one tab is open, rather than run in
+// whichever tab another session left selected. All tabs share one browser context, so the sign-ins
+// and Outlook's local storage are shared.
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -26,6 +34,14 @@ const WITHHELD = /^browser_(?:run_code_unsafe|storage_state|set_storage_state|co
 const SECRET_LINE = /^(\s*["']?(?:cookie|set-cookie|authorization|x-csrf-token)["']?\s*:\s*).+$/gim;
 /** Sessions are reloaded into the browser at most this often unless a page proves one dead. */
 const RELOAD_MS = 30 * 60_000;
+/** A tab unused this long is closed; past MAX_TABS the least recently used one is. */
+const TAB_IDLE_MS = 30 * 60_000;
+const MAX_TABS = 8;
+const TAB_PARAM = {
+  type: "string",
+  description:
+    'Your tab\'s id (e.g. "t3"), as browser.navigate returned it. This browser is shared with other sessions: pass it on every call so you work in your own tab. Omit it on browser.navigate to open a new tab.',
+};
 
 /**
  * @param {object} deps
@@ -141,10 +157,122 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
     log,
   };
 
+  // One tab per caller, by id. Pages come from the browser context Playwright MCP drives, which
+  // owa-page.cjs (an initPage hook) records; Playwright MCP numbers its tabs in the order the
+  // context opened them, which is context.pages()'s order.
+  const tabs = new Map();
+  let nextTab = 1;
+  const browserContext = () => globalThis[OWA]?.context;
+  const pages = () => browserContext()?.pages() ?? [];
+
+  function adopt(page) {
+    const id = `t${nextTab++}`;
+    tabs.set(id, { page, usedAt: Date.now() });
+    page.once("close", () => tabs.delete(id));
+    return id;
+  }
+
+  async function closeTab(id) {
+    const entry = tabs.get(id);
+    tabs.delete(id);
+    await entry?.page.close().catch(() => {});
+  }
+
+  /** Close tabs left idle. */
+  async function sweep() {
+    const now = Date.now();
+    for (const [id, entry] of tabs) if (entry.page.isClosed() || now - entry.usedAt > TAB_IDLE_MS) await closeTab(id);
+  }
+
+  async function openTab() {
+    await sweep();
+    // Room for the new tab: only opening one ever closes a tab still in use (the least recent).
+    while (tabs.size >= MAX_TABS) {
+      const [oldest] = [...tabs].sort((a, b) => a[1].usedAt - b[1].usedAt)[0];
+      await closeTab(oldest);
+    }
+    const before = new Set(pages());
+    const opened = await call("browser_tabs", { action: "new" });
+    if (opened.isError) throw new Error(`could not open a tab: ${opened.text.slice(0, 200)}`);
+    // owa-page.cjs records the context once the page's initPage hooks ran; allow it a moment.
+    let page;
+    for (let waited = 0; !(page = pages().find((p) => !before.has(p) && !p.isClosed())) && waited < 5000; waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!page) throw new Error("could not open a tab: the new page did not appear in the browser context");
+    return adopt(page);
+  }
+
+  async function selectTab(id) {
+    const entry = tabs.get(id);
+    if (!entry || entry.page.isClosed()) {
+      throw new Error(`Tab ${id} is not open (tabs close after ${TAB_IDLE_MS / 60_000} idle minutes). Call browser.navigate without tab to open a new one.`);
+    }
+    const index = pages().indexOf(entry.page);
+    if (index < 0) throw new Error(`Tab ${id} is not in the browser any more. Call browser.navigate without tab to open a new one.`);
+    const selected = await call("browser_tabs", { action: "select", index });
+    if (selected.isError) throw new Error(`could not select tab ${id}: ${selected.text.slice(0, 200)}`);
+    entry.usedAt = Date.now();
+  }
+
+  /** The caller's tab: theirs by id, a new one for a navigation, or the only one open. */
+  async function resolveTab(name, tab) {
+    if (tab !== undefined) return { id: tab, opened: false };
+    if (name === "browser_navigate" || tabs.size === 0) return { id: await openTab(), opened: true };
+    if (tabs.size === 1) return { id: [...tabs.keys()][0], opened: false };
+    throw new Error(
+      `${tabs.size} tabs are open in this shared browser (${[...tabs.keys()].join(", ")}), and other sessions may be using them. Pass tab with the id browser.navigate returned to you, or call browser.navigate without tab to open your own.`,
+    );
+  }
+
+  const tabNote = (id, opened, popups) =>
+    [
+      "### Tab",
+      opened ? `- ${id} (new): pass "tab": "${id}" on your next browser calls to keep working in this tab.` : `- ${id}`,
+      ...popups.map((p) => `- ${p} opened from ${id} (a popup or new window): pass "tab": "${p}" to use it.`),
+      "",
+    ].join("\n");
+
   async function run(name, args) {
     if (Date.now() - loadedAt > RELOAD_MS) await reload();
-    if (name === "browser_navigate") return navigateSignedIn(driver, args.url);
-    return call(name, args);
+    const { tab, ...rest } = args;
+    const { id, opened } = await resolveTab(name, tab);
+    await selectTab(id);
+    const mine = tabs.get(id).page;
+    const before = new Set(pages());
+    const result = name === "browser_navigate" ? await navigateSignedIn(driver, rest.url) : await call(name, rest);
+    // A page this tab opened (target=_blank, window.open) gets an id of its own.
+    const popups = [];
+    for (const page of pages()) {
+      if (before.has(page) || page.isClosed() || [...tabs.values()].some((t) => t.page === page)) continue;
+      if ((await page.opener().catch(() => null)) === mine) popups.push(adopt(page));
+    }
+    return { ...result, text: tabNote(id, opened, popups) + result.text };
+  }
+
+  /** browser.tabs on the caller's own tabs, by id. */
+  async function tabsTool({ action, tab, url }) {
+    if (Date.now() - loadedAt > RELOAD_MS) await reload();
+    if (action === "new") {
+      const id = await openTab();
+      await selectTab(id);
+      const result = url ? await navigateSignedIn(driver, url) : { text: "", isError: false };
+      return { ...result, text: tabNote(id, true, []) + result.text };
+    }
+    if (action === "close") {
+      if (!tab) throw new Error("browser.tabs close needs tab: the id of your own tab");
+      if (!tabs.has(tab)) throw new Error(`Tab ${tab} is not open.`);
+      await closeTab(tab);
+      return { text: `Closed tab ${tab}.`, isError: false };
+    }
+    await sweep();
+    const now = Date.now();
+    const lines = [];
+    for (const [id, entry] of tabs) {
+      const title = await entry.page.title().catch(() => "");
+      lines.push(`- ${id}: [${title}](${entry.page.url()}) (used ${Math.round((now - entry.usedAt) / 60_000)} min ago)`);
+    }
+    return { text: `### Tabs\n${lines.join("\n") || "No tabs open."}`, isError: false };
   }
 
   const owa = owaTransport({ call, driver, reload, navigateSignedIn, serialize: (task) => {
@@ -156,26 +284,46 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
     return pending;
   }, dataDir, log });
 
+  const queued = (task) => {
+    const pending = queue.then(task);
+    queue = pending.catch(() => {});
+    return pending.then((result) => {
+      const body = result.text.replace(SECRET_LINE, "$1[redacted]");
+      if (result.isError) throw new Error(body || "browser call failed");
+      return { text: body };
+    });
+  };
+
   const { tools } = await client.listTools();
   const ops = tools
-    .filter((tool) => !WITHHELD.test(tool.name))
+    .filter((tool) => !WITHHELD.test(tool.name) && tool.name !== "browser_tabs")
     .map((tool) => ({
       name: tool.name.replace(/^browser_/, "browser."),
-      description: `${tool.description}. This browser is signed in to the student's Vanderbilt (OneVU, Brightspace, YES) and Microsoft 365 accounts and stays signed in.`,
-      input: z.fromJSONSchema(tool.inputSchema),
+      description: `${tool.description}. This browser is signed in to the student's Vanderbilt (OneVU, Brightspace, YES) and Microsoft 365 accounts and stays signed in.${
+        tool.name === "browser_navigate" ? " Without tab it opens a new tab of your own and returns its id; pass that id as tab on every later browser call, since other sessions share this browser." : " Pass tab (from browser.navigate) so this runs in your own tab."
+      }`,
+      input: z.fromJSONSchema({ ...tool.inputSchema, properties: { ...(tool.inputSchema.properties ?? {}), tab: TAB_PARAM } }),
       output: z.object({ text: z.string() }),
       requires: ["net"],
       annotations: { readOnlyHint: tool.annotations?.readOnlyHint ?? false, destructiveHint: tool.annotations?.destructiveHint, openWorldHint: true },
-      handler: (args) => {
-        const pending = queue.then(() => run(tool.name, args));
-        queue = pending.catch(() => {});
-        return pending.then((result) => {
-          const body = result.text.replace(SECRET_LINE, "$1[redacted]");
-          if (result.isError) throw new Error(body || `${tool.name} failed`);
-          return { text: body };
-        });
-      },
+      handler: (args) => queued(() => run(tool.name, args)),
     }));
+  if (tools.some((tool) => tool.name === "browser_tabs")) {
+    ops.push({
+      name: "browser.tabs",
+      description:
+        "List your tabs in the signed-in browser, open a new one (optionally at url), or close one by its tab id. The browser is shared with other sessions; each works in its own tab, named by the id browser.navigate or this tool returns.",
+      input: z.object({
+        action: z.enum(["list", "new", "close"]).describe("list: the open tabs and their ids; new: open a tab of your own; close: close tab"),
+        tab: z.string().optional().describe("The tab to close"),
+        url: z.string().optional().describe("For new: the URL to open in it"),
+      }),
+      output: z.object({ text: z.string() }),
+      requires: ["net"],
+      annotations: { readOnlyHint: false, openWorldHint: true },
+      handler: (args) => queued(() => tabsTool(args)),
+    });
+  }
   // The OWA transport rides along for server.mjs (src/owa/operations.ts).
   return Object.assign(ops, { owa });
 }
