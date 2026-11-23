@@ -18,11 +18,16 @@ const CACHE_MS = 15 * 60_000;
 const XSRF_PATH = "/d2l/lp/auth/xsrf-tokens";
 const HOME_PATH = "/d2l/home";
 
-/** A Vanderbilt Brightspace URL: the D2L app's paths on a Vanderbilt host. */
+/**
+ * A Vanderbilt Brightspace URL: anything on brightspace.vanderbilt.edu (course files are served at
+ * /content/enforced/...), or the D2L app's /d2l/ paths on another Vanderbilt host.
+ */
 export function isBrightspace(url: string): boolean {
   const u = new URL(url);
   const host = u.hostname.toLowerCase();
-  return u.protocol === "https:" && (host === "vanderbilt.edu" || host.endsWith(".vanderbilt.edu")) && u.pathname.toLowerCase().startsWith("/d2l/");
+  if (u.protocol !== "https:") return false;
+  if (host === "brightspace.vanderbilt.edu") return true;
+  return (host === "vanderbilt.edu" || host.endsWith(".vanderbilt.edu")) && u.pathname.toLowerCase().startsWith("/d2l/");
 }
 
 interface Primed {

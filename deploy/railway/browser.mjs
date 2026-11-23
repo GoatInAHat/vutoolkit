@@ -178,17 +178,19 @@ export async function browserOperations({ z, ensureSession, browserSession, emai
     await entry?.page.close().catch(() => {});
   }
 
+  /** Close tabs left idle. */
   async function sweep() {
     const now = Date.now();
     for (const [id, entry] of tabs) if (entry.page.isClosed() || now - entry.usedAt > TAB_IDLE_MS) await closeTab(id);
-    while (tabs.size >= MAX_TABS) {
-      const [oldest] = [...tabs].sort((a, b) => a[1].usedAt - b[1].usedAt)[0];
-      await closeTab(oldest);
-    }
   }
 
   async function openTab() {
     await sweep();
+    // Room for the new tab: only opening one ever closes a tab still in use (the least recent).
+    while (tabs.size >= MAX_TABS) {
+      const [oldest] = [...tabs].sort((a, b) => a[1].usedAt - b[1].usedAt)[0];
+      await closeTab(oldest);
+    }
     const before = new Set(pages());
     const opened = await call("browser_tabs", { action: "new" });
     if (opened.isError) throw new Error(`could not open a tab: ${opened.text.slice(0, 200)}`);

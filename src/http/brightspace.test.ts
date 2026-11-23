@@ -99,6 +99,8 @@ describe("brightspaceFetch", () => {
   it("leaves other URLs alone", async () => {
     const bs = fakeBrightspace();
     expect(isBrightspace("https://yes.vanderbilt.edu/d2l/x")).toBe(true);
+    expect(isBrightspace(`${BS}/content/enforced/669997-CS-2281/syllabus.pdf`)).toBe(true);
+    expect(isBrightspace("https://yes.vanderbilt.edu/content/enforced/x.pdf")).toBe(false);
     expect(isBrightspace("https://brightspace.vanderbilt.edu.evil.com/d2l/x")).toBe(false);
     expect(isBrightspace("https://more.app.vanderbilt.edu/more/")).toBe(false);
     await brightspaceFetch({ url: "https://more.app.vanderbilt.edu/nothing" }, { jar: new CookieJar(), fetchImpl: bs.impl });
