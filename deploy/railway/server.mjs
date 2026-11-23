@@ -151,6 +151,9 @@ async function browserProbe() {
     const where = (() => { try { const u = new URL(landed); return { host: u.hostname, path: u.origin + u.pathname }; } catch { return { host: "", path: "?" }; } })();
     const signIn = ["onevu.vanderbilt.edu", "login.microsoftonline.com", "login.microsoft.com"].includes(where.host);
     log(`browser probe: ${signIn ? "NOT signed in" : "signed in"}: ${where.path} [${title}]`);
+    // The probe's tab is its own; close it rather than leave it idle.
+    const tab = /### Tab\n- (t\d+)/.exec(text)?.[1];
+    if (tab) await op("browser.tabs")?.handler({ action: "close", tab }, context()).catch(() => {});
   } catch (error) {
     log(`browser probe: failed: ${String(error?.message ?? error).split("\n")[0].slice(0, 200)}`);
   }

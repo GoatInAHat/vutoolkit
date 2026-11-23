@@ -21,8 +21,10 @@ import { assertYesReadOnly } from "./yes/guard.js";
 import { ensureSession } from "./sso/ensure.js";
 import { operation, type Context, type Operation } from "./toolfactory/types.js";
 import { setupOperations } from "./sso/setup-operations.js";
-import { CookieJar, sessionFetch } from "./http/session-fetch.js";
+import { CookieJar } from "./http/session-fetch.js";
 import { requestWithSession, vaultStore, withSession } from "./http/with-session.js";
+import { brightspaceFetch, isBrightspace } from "./http/brightspace.js";
+import { fileText, looksBinary } from "./http/file-text.js";
 
 const idp = z.enum(["vanderbilt", "microsoft"]);
 const transcriptSchema = z.object({
@@ -60,6 +62,22 @@ const sessionResult = z.object({
   assertedSignCount: z.number().optional(),
 });
 
+const BRIGHTSPACE = "https://brightspace.vanderbilt.edu";
+
+/** The file name a Content-Disposition header gives (RFC 6266: filename* first), if any. */
+function dispositionName(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  const star = /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[2].trim().replace(/^"|"$/g, ""));
+    } catch {
+      /* fall back to the plain parameter */
+    }
+  }
+  return /filename\s*=\s*"([^"]*)"/i.exec(header)?.[1] ?? /filename\s*=\s*([^;]+)/i.exec(header)?.[1]?.trim();
+}
+
 const liveRecord = (ctx: Context): Promise<Transcript> => withSession(ctx, ["vanderbilt"], (cookies) => academicRecord(cookies));
 
 const authored: Operation[] = [
@@ -68,7 +86,7 @@ const authored: Operation[] = [
   operation({
     name: "request",
     description:
-      "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or SharePoint. Outlook's mail APIs (Outlook REST, Microsoft Graph) take an OAuth bearer token, not the signed-in session: a 401 from a Microsoft host is retried once on a freshly minted session, and when it is still 401 it comes back with a trace line saying the endpoint wants a token; read mail in the signed-in browser. Cookie values never appear in the result. YES is read-only: enrollment and cart or planner changes there are refused. A non-GET request elsewhere acts on the student's account: send one only for something the student asked for.",
+      "Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Brightspace (/d2l/ paths) is signed in to first when needed and sent Brightspace's own CSRF token (X-Csrf-Token), as its pages do. A file (PDF, image, Office document) comes back as a one-line description, not decoded bytes; brightspace.file_text reads a course file's text. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or SharePoint. Outlook's mail APIs (Outlook REST, Microsoft Graph) take an OAuth bearer token, not the signed-in session: a 401 from a Microsoft host is retried once on a freshly minted session, and when it is still 401 it comes back with a trace line saying the endpoint wants a token; read mail in the signed-in browser. Cookie values never appear in the result. YES is read-only: enrollment and cart or planner changes there are refused. A non-GET request elsewhere acts on the student's account: send one only for something the student asked for.",
     input: z.object({
       url: z.string().url().describe("Absolute https URL on a Vanderbilt or Microsoft 365 host"),
       method: z.enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
@@ -91,10 +109,64 @@ const authored: Operation[] = [
       const target = new URL(url);
       const owner = target.protocol === "https:" ? idpForHost(target.hostname) : null;
       if (!owner) throw new Error(`request only reaches https Vanderbilt or Microsoft 365 hosts; ${target.protocol}//${target.hostname} is neither`);
-      const res = await requestWithSession(ctx, owner, (cookies) =>
-        sessionFetch({ url, method, headers, body }, { jar: new CookieJar(cookies), guard: assertYesReadOnly }),
+      const { bytes, ...res } = await requestWithSession(ctx, owner, (cookies) =>
+        brightspaceFetch({ url, method, headers, body }, { jar: new CookieJar(cookies), guard: assertYesReadOnly, binary: true }, ctx.dataDir),
       );
-      return { ...res, text: res.text.slice(0, maxChars), truncated: res.text.length > maxChars };
+      // A file decoded as UTF-8 is noise: say what it is instead.
+      const text =
+        bytes && bytes.length > 0 && looksBinary(res.contentType, bytes)
+          ? `[${bytes.length} bytes of ${res.contentType || "binary data"}, not shown as text. For a Brightspace course file, brightspace.file_text returns its text.]`
+          : res.text;
+      return { ...res, text: text.slice(0, maxChars), truncated: text.length > maxChars };
+    },
+  }),
+  operation({
+    name: "brightspace.file_text",
+    description:
+      "Download a Brightspace course file as the signed-in student and return its text: a PDF (read with Mozilla's PDF.js, pages separated by a form feed line) or a text file (HTML, code, CSV, Markdown...). Name the file by orgUnitId and topicId (from /d2l/api/le/1.75/{orgUnitId}/content/toc, a topic whose TypeIdentifier is File) or by its Brightspace url (a Valence file endpoint or a /content/enforced/ link). Other file types (Word, PowerPoint, images) are refused with their type. Read-only.",
+    input: z.object({
+      orgUnitId: z.number().int().positive().optional().describe("The course's org unit id; with topicId"),
+      topicId: z.number().int().positive().optional().describe("The content topic id; with orgUnitId"),
+      url: z.string().url().optional().describe("Or: the file's https Brightspace URL"),
+      maxChars: z.number().int().min(100).max(500_000).default(100_000).describe("Bound on the returned text"),
+    }),
+    output: z.object({
+      url: z.string(),
+      name: z.string(),
+      contentType: z.string(),
+      size: z.number(),
+      kind: z.enum(["pdf", "text"]),
+      pages: z.number().optional(),
+      text: z.string(),
+      truncated: z.boolean(),
+      trace: z.array(z.string()),
+    }),
+    requires: ["net", "secret"],
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    handler: async ({ orgUnitId, topicId, url, maxChars }, ctx) => {
+      const target = url ?? (orgUnitId && topicId ? `${BRIGHTSPACE}/d2l/api/le/1.75/${orgUnitId}/content/topics/${topicId}/file` : undefined);
+      if (!target) throw new Error("brightspace.file_text needs orgUnitId and topicId, or url");
+      if (!isBrightspace(target)) throw new Error("brightspace.file_text reads Brightspace files only (an https *.vanderbilt.edu /d2l/ URL)");
+      const res = await requestWithSession(ctx, "vanderbilt", (cookies) =>
+        brightspaceFetch({ url: target }, { jar: new CookieJar(cookies), guard: assertYesReadOnly, binary: true }, ctx.dataDir),
+      );
+      if (res.status !== 200) {
+        throw Object.assign(new Error(`Brightspace answered ${res.status} for ${new URL(res.url).pathname}: ${res.text.slice(0, 300)}`), { code: "HTTP_" + res.status });
+      }
+      const bytes = res.bytes ?? new Uint8Array();
+      const name = dispositionName(res.headers["content-disposition"]) ?? decodeURIComponent(new URL(res.url).pathname.split("/").pop() ?? "");
+      const { kind, text, pages } = await fileText(bytes, res.contentType, name);
+      return {
+        url: res.url,
+        name,
+        contentType: res.contentType,
+        size: bytes.length,
+        kind,
+        ...(pages === undefined ? {} : { pages }),
+        text: text.slice(0, maxChars),
+        truncated: text.length > maxChars,
+        trace: res.trace,
+      };
     },
   }),
   operation({

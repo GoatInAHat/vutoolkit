@@ -41,6 +41,21 @@ export class CookieJar {
       .join("; ");
   }
 
+  /** Copies of the cookies in this host's domain scope, for a short in-process cache. */
+  entriesFor(host: string): { name: string; value: string; domain: string }[] {
+    const h = host.toLowerCase();
+    return this.entries.filter((c) => c.domain !== "" && (h === c.domain || h.endsWith("." + c.domain))).map((c) => ({ ...c }));
+  }
+
+  /** Add cookies taken with entriesFor; the same name and domain overwrites. */
+  add(entries: readonly { name: string; value: string; domain: string }[]): void {
+    for (const e of entries) {
+      const i = this.entries.findIndex((c) => c.name === e.name && c.domain === e.domain);
+      if (i >= 0) this.entries[i] = { ...e };
+      else this.entries.push({ ...e });
+    }
+  }
+
   /** Merge Set-Cookie lines from a response; the same name and domain overwrites. */
   absorb(url: string, setCookies: readonly string[]): void {
     const host = new URL(url).hostname.toLowerCase();
@@ -77,6 +92,8 @@ export interface SessionResponse {
   text: string;
   /** One "STATUS host/path" line per hop: diagnostics without cookie values or query strings. */
   trace: string[];
+  /** The final response's raw body, only when the request asked for `binary`. */
+  bytes?: Uint8Array;
 }
 
 export interface SessionFetchOptions {
@@ -87,6 +104,8 @@ export interface SessionFetchOptions {
   hopTimeoutMs?: number;
   /** Called before every hop is sent; throw to refuse it. */
   guard?: (url: string, method: string) => void;
+  /** Keep the final response's raw body as `bytes` (a file), beside the text. */
+  binary?: boolean;
 }
 
 const decodeEntities = (s: string) =>
@@ -161,7 +180,10 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
     opts.jar.absorb(url, typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : []);
     const here = new URL(url);
     trace.push(`${method === "GET" ? "" : method + " "}${res.status} ${here.host}${here.pathname}`);
-    return { res, text: res.status >= 300 && res.status < 400 ? "" : await res.text() };
+    if (res.status >= 300 && res.status < 400) return { res, text: "", bytes: new Uint8Array() };
+    // Read the body once as bytes so a file survives; the text is the same UTF-8 decoding res.text() does.
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { res, text: new TextDecoder().decode(bytes), bytes };
   };
 
   let url = request.url;
@@ -170,10 +192,10 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
   let body = request.body;
   let danced = false;
   for (let hop = 0; hop <= maxHops; hop++) {
-    const { res, text } = await send(url, method, headers, body);
+    const { res, text, bytes } = await send(url, method, headers, body);
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get("location");
-      if (!location) return finish(res, text, url);
+      if (!location) return finish(res, text, url, bytes);
       const next = new URL(location, url);
       if (next.host !== origin.host) danced = true;
       url = next.href;
@@ -212,17 +234,19 @@ export async function sessionFetch(request: SessionRequest, opts: SessionFetchOp
       // The request was diverted to sign in: send the caller's own request once more, without
       // another dance. A request the service answered with a redirect elsewhere is not resent.
       const replay = await send(request.url, original, callerHeaders, request.body);
-      return finish(replay.res, replay.text, request.url);
+      return finish(replay.res, replay.text, request.url, replay.bytes);
     }
-    return finish(res, text, url);
+    return finish(res, text, url, bytes);
   }
   throw new Error(`sign-in dance exceeded ${maxHops} hops (last: ${new URL(url).host}${new URL(url).pathname})`);
 
-  function finish(res: Response, text: string, url: string): SessionResponse {
+  function finish(res: Response, text: string, url: string, bytes: Uint8Array): SessionResponse {
     const headers: Record<string, string> = {};
     res.headers.forEach((value, name) => {
       if (name !== "set-cookie") headers[name] = value;
     });
-    return { status: res.status, url, contentType: res.headers.get("content-type") ?? "", headers, text, trace };
+    const out: SessionResponse = { status: res.status, url, contentType: res.headers.get("content-type") ?? "", headers, text, trace };
+    if (opts.binary) out.bytes = bytes;
+    return out;
   }
 }

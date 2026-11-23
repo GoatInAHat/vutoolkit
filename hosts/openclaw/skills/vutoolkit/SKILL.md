@@ -33,6 +33,14 @@ This skill supplies instructions, not the runtime or credentials. Check whether 
 <!-- tf:operations -->
 ## Operations
 
+### brightspace.file_text
+
+Download a Brightspace course file as the signed-in student and return its text: a PDF (read with Mozilla's PDF.js, pages separated by a form feed line) or a text file (HTML, code, CSV, Markdown...). Name the file by orgUnitId and topicId (from /d2l/api/le/1.75/{orgUnitId}/content/toc, a topic whose TypeIdentifier is File) or by its Brightspace url (a Valence file endpoint or a /content/enforced/ link). Other file types (Word, PowerPoint, images) are refused with their type. Read-only.
+
+Arguments: `orgUnitId`, `topicId`, `url`, `maxChars`.
+
+`vutoolkit brightspace.file_text --json '<arguments>'` prints a JSON result. MCP tool `brightspace.file_text` on server `vutoolkit` returns the same result as `structuredContent`.
+
 ### courses.detail
 
 Read official YES course description and prerequisite text, preserving ambiguous prose as unknown instead of guessing. Course ID and offer number come from courses.search or the official planner. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
@@ -115,7 +123,7 @@ Arguments: `timeoutSeconds`.
 
 ### request
 
-Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or SharePoint. Outlook's mail APIs (Outlook REST, Microsoft Graph) take an OAuth bearer token, not the signed-in session: a 401 from a Microsoft host is retried once on a freshly minted session, and when it is still 401 it comes back with a trace line saying the endpoint wants a token; read mail in the signed-in browser. Cookie values never appear in the result. YES is read-only: enrollment and cart or planner changes there are refused. A non-GET request elsewhere acts on the student's account: send one only for something the student asked for. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
+Send one HTTP request to any Vanderbilt (*.vanderbilt.edu) or Microsoft 365 (Outlook, Office, SharePoint, login) web endpoint as the signed-in student, and get the service's own response back. The stored sessions ride every sign-in hop (OneVU/Okta, Entra, SAML and OIDC form posts); a refused session is re-minted with the toolkit passkey and the request retried once, so there is no sign-in step for the caller. Brightspace (/d2l/ paths) is signed in to first when needed and sent Brightspace's own CSRF token (X-Csrf-Token), as its pages do. A file (PDF, image, Office document) comes back as a one-line description, not decoded bytes; brightspace.file_text reads a course file's text. Use it for the services' own APIs, e.g. Brightspace's D2L Valence API (https://brightspace.vanderbilt.edu/d2l/api/lp/1.46/users/whoami, /d2l/api/lp/1.46/enrollments/myenrollments/, /d2l/api/le/1.75/{orgUnitId}/content/toc, /d2l/api/le/1.75/{orgUnitId}/dropbox/folders/, /d2l/api/le/1.75/{orgUnitId}/grades/values/myGradeValues/, /d2l/api/le/1.75/{orgUnitId}/news/), YES pages, or SharePoint. Outlook's mail APIs (Outlook REST, Microsoft Graph) take an OAuth bearer token, not the signed-in session: a 401 from a Microsoft host is retried once on a freshly minted session, and when it is still 401 it comes back with a trace line saying the endpoint wants a token; read mail in the signed-in browser. Cookie values never appear in the result. YES is read-only: enrollment and cart or planner changes there are refused. A non-GET request elsewhere acts on the student's account: send one only for something the student asked for. Pass timeoutSeconds: 300 when a sign-in may be needed (integer 1-570; whole-call deadline).
 
 Arguments: `url`, `method`, `headers`, `body`, `maxChars`, `timeoutSeconds`.
 
